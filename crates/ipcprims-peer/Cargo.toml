@@ -1,0 +1,30 @@
+[package]
+name = "ipcprims-peer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "High-level peer connection management for IPC"
+
+[dependencies]
+ipcprims-transport.workspace = true
+ipcprims-frame.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+default = []
+schema = ["dep:ipcprims-schema"]
+async = ["ipcprims-transport/async", "ipcprims-frame/async", "dep:tokio"]
+
+[dependencies.ipcprims-schema]
+workspace = true
+optional = true
+
+[dependencies.tokio]
+workspace = true
+optional = true

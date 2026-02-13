@@ -1,0 +1,41 @@
+[package]
+name = "ipcprims"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Reliable inter-process communication with permissive licensing"
+
+[dependencies]
+ipcprims-transport.workspace = true
+ipcprims-frame.workspace = true
+ipcprims-schema = { workspace = true, optional = true }
+ipcprims-peer = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+comfy-table = { workspace = true, optional = true }
+ctrlc = { version = "3.4", optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "json"], optional = true }
+
+[features]
+default = ["peer"]
+peer = ["dep:ipcprims-peer"]
+schema = ["dep:ipcprims-schema", "ipcprims-peer?/schema"]
+async = ["ipcprims-transport/async", "ipcprims-frame/async", "ipcprims-peer?/async"]
+cli = ["dep:clap", "dep:comfy-table", "dep:ctrlc", "dep:serde", "dep:serde_json", "dep:tracing", "dep:tracing-subscriber", "peer", "schema"]
+
+[[bin]]
+name = "ipcprims"
+required-features = ["cli"]
+
+[[example]]
+name = "echo-server"
+required-features = ["peer"]
+
+[[example]]
+name = "multi-channel"
+required-features = ["peer"]
