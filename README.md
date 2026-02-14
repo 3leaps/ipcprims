@@ -178,6 +178,10 @@ Go bindings are provided in-module at `bindings/go/ipcprims` with cgo linkage to
 The module follows sibling-repo layout conventions with `include/` (generated header) and
 `lib/` (static archives; `lib/local/<platform>/` for local development sync).
 
+### TypeScript bindings
+
+TypeScript bindings scaffold is provided at `bindings/typescript` using Node-API (`ipcprims-napi`).
+
 ## Platform Support
 
 | Platform            | Target                       | Transport        | Status    |

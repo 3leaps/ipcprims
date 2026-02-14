@@ -62,6 +62,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 
 - [ ] Go bindings: Verify `go test ./...` passes in `bindings/go/ipcprims/`
 - [ ] Go submodule tag: `git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"`
+- [ ] TypeScript bindings: Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
 - [ ] TypeScript (future): Run N-API prebuilds + npm publish workflows after signing
 
 ### CI Verification

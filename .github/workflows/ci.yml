@@ -110,6 +110,35 @@ jobs:
           args: ./...
       - name: Test Go bindings
         run: cd bindings/go/ipcprims && go test ./...
+  typescript-bindings:
+    name: TypeScript Bindings (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+          - target: darwin-arm64
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build NAPI crate
+        run: cargo build -p ipcprims-napi
+      - name: Install TS dependencies
+        run: cd bindings/typescript && npm install
+      - name: Build native addon
+        run: cd bindings/typescript && npm run build:native
+      - name: Run tests
+        run: cd bindings/typescript && npm test
+      - name: Typecheck
+        run: cd bindings/typescript && npm run typecheck
   license-check:
     name: License & Dependency Check
     runs-on: ubuntu-latest

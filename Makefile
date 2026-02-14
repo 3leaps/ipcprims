@@ -9,7 +9,7 @@
 #   make build      - Build all crates
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
-.PHONY: ffi-header build-ffi go-bindings-sync go-build go-test
+.PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
 .PHONY: precommit prepush deny audit
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -36,6 +36,7 @@ GONEAT = $(shell command -v goneat 2>/dev/null)
 
 CARGO = cargo
 GO_BINDINGS_DIR := bindings/go/ipcprims
+TS_BINDINGS_DIR := bindings/typescript
 GO_OS := $(shell go env GOOS)
 GO_ARCH := $(shell go env GOARCH)
 GO_PLATFORM := $(GO_OS)-$(GO_ARCH)
@@ -61,6 +62,8 @@ help: ## Show available targets
 	@echo "  go-bindings-sync  Sync generated header + static lib into Go bindings"
 	@echo "  go-build        Build Go bindings module"
 	@echo "  go-test         Run Go bindings tests"
+	@echo "  ts-build        Build TypeScript N-API bindings"
+	@echo "  ts-test         Run TypeScript bindings tests"
 	@echo "  dogfood-cli     Run end-to-end CLI dogfooding matrix"
 	@echo "  clean           Remove build artifacts"
 	@echo ""
@@ -287,6 +290,17 @@ go-test: go-bindings-sync ## Run Go bindings tests
 	@echo "Running Go bindings tests..."
 	@cd $(GO_BINDINGS_DIR) && go test ./...
 	@echo "[ok] Go bindings tests passed"
+
+ts-build: ## Build TypeScript bindings
+	@echo "Building TypeScript bindings..."
+	@cargo build -p ipcprims-napi
+	@cd $(TS_BINDINGS_DIR) && npm install && npm run build:native
+	@echo "[ok] TypeScript bindings build complete"
+
+ts-test: ## Run TypeScript bindings tests
+	@echo "Running TypeScript bindings tests..."
+	@cd $(TS_BINDINGS_DIR) && npm install && npm test && npm run typecheck
+	@echo "[ok] TypeScript bindings tests passed"
 
 clean: ## Remove build artifacts
 	@echo "Cleaning..."

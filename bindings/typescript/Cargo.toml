@@ -1,0 +1,22 @@
+[package]
+name = "ipcprims-napi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Node-API addon for @3leaps/ipcprims"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2.16.16", default-features = false, features = ["napi8"] }
+napi-derive = "2.16.13"
+ipcprims-peer = { workspace = true, features = ["schema"] }
+ipcprims-frame.workspace = true
+ipcprims-schema.workspace = true
+
+[build-dependencies]
+napi-build = "2.1.4"

@@ -6,6 +6,7 @@ members = [
     "crates/ipcprims-schema",
     "crates/ipcprims-peer",
     "crates/ipcprims-ffi",
+    "bindings/typescript",
     "crates/ipcprims",
 ]
 

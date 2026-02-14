@@ -1,0 +1,9 @@
+{
+  "name": "@3leaps/ipcprims-darwin-arm64",
+  "version": "0.1.1",
+  "main": "ipcprims.darwin-arm64.node",
+  "files": ["ipcprims.darwin-arm64.node"],
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "license": "MIT OR Apache-2.0"
+}

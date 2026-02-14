@@ -1,0 +1,49 @@
+{
+  "name": "@3leaps/ipcprims",
+  "version": "0.1.1",
+  "description": "TypeScript bindings for ipcprims via Node-API",
+  "license": "MIT OR Apache-2.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "npm/",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "napi": {
+    "name": "ipcprims",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ]
+    }
+  },
+  "scripts": {
+    "build:native": "napi build --cargo-cwd . --release --platform --js false --strip",
+    "test": "npm run build:native && tsc -p tsconfig.test.json && node --test .tmp-test/ipcprims.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "optionalDependencies": {
+    "@3leaps/ipcprims-linux-x64-gnu": "0.1.1",
+    "@3leaps/ipcprims-linux-x64-musl": "0.1.1",
+    "@3leaps/ipcprims-linux-arm64-gnu": "0.1.1",
+    "@3leaps/ipcprims-darwin-arm64": "0.1.1",
+    "@3leaps/ipcprims-win32-x64-msvc": "0.1.1"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}
