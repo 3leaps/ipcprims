@@ -9,6 +9,7 @@
 #   make build      - Build all crates
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
+.PHONY: ffi-header build-ffi
 .PHONY: precommit prepush deny audit
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -51,6 +52,8 @@ help: ## Show available targets
 	@echo "  build           Build all crates (debug)"
 	@echo "  build-release   Build all crates (release)"
 	@echo "  install         Install ipcprims binary to ~/.local/bin"
+	@echo "  ffi-header      Generate C header for ipcprims-ffi"
+	@echo "  build-ffi       Build ipcprims-ffi static and shared libraries"
 	@echo "  dogfood-cli     Run end-to-end CLI dogfooding matrix"
 	@echo "  clean           Remove build artifacts"
 	@echo ""
@@ -242,6 +245,22 @@ build-release: ## Build all crates (release)
 	@echo "Building (release)..."
 	$(CARGO) build --workspace --release
 	@echo "[ok] Release build complete"
+
+ffi-header: ## Generate C header from ipcprims-ffi
+	@echo "Generating FFI header..."
+	@mkdir -p crates/ipcprims-ffi/include
+	@if command -v cbindgen >/dev/null 2>&1; then \
+		cbindgen --config cbindgen.toml --crate ipcprims-ffi --output crates/ipcprims-ffi/include/ipcprims.h; \
+		echo "[ok] Generated crates/ipcprims-ffi/include/ipcprims.h"; \
+	else \
+		echo "[!!] cbindgen not found (cargo install cbindgen)"; \
+		exit 1; \
+	fi
+
+build-ffi: ffi-header ## Build FFI library artifacts
+	@echo "Building ipcprims-ffi..."
+	$(CARGO) build --release -p ipcprims-ffi
+	@echo "[ok] Built target/release/libipcprims_ffi.a and shared library variants"
 
 clean: ## Remove build artifacts
 	@echo "Cleaning..."

@@ -167,6 +167,11 @@ Optional JSON Schema 2020-12 validation at the transport boundary. Behind the `s
 
 High-level peer connection management with handshake, health tracking, and request/response patterns.
 
+### ipcprims-ffi
+
+C-ABI bindings scaffold for peer-level APIs, enabling Go/TypeScript/Python bindings to link against
+`cdylib`/`staticlib` artifacts.
+
 ## Platform Support
 
 | Platform            | Target                       | Transport        | Status    |
