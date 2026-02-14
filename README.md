@@ -172,6 +172,12 @@ High-level peer connection management with handshake, health tracking, and reque
 C-ABI bindings scaffold for peer-level APIs, enabling Go/TypeScript/Python bindings to link against
 `cdylib`/`staticlib` artifacts.
 
+### Go bindings
+
+Go bindings are provided in-module at `bindings/go/ipcprims` with cgo linkage to `ipcprims-ffi`.
+The module follows sibling-repo layout conventions with `include/` (generated header) and
+`lib/` (static archives; `lib/local/<platform>/` for local development sync).
+
 ## Platform Support
 
 | Platform            | Target                       | Transport        | Status    |

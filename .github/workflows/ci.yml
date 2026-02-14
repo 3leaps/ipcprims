@@ -79,6 +79,37 @@ jobs:
             -Ltarget/release \
             -lipcprims_ffi \
             -o /tmp/ipcprims-ffi-smoke
+  go-bindings:
+    name: Go Bindings (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            os: ubuntu-latest
+          - target: darwin-arm64
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Install cbindgen
+        run: cargo install cbindgen --locked
+      - name: Sync Go binding artifacts
+        run: make go-bindings-sync
+      - name: Build Go bindings
+        run: cd bindings/go/ipcprims && go build ./...
+      - name: Lint Go bindings
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61
+          working-directory: bindings/go/ipcprims
+          args: ./...
+      - name: Test Go bindings
+        run: cd bindings/go/ipcprims && go test ./...
   license-check:
     name: License & Dependency Check
     runs-on: ubuntu-latest

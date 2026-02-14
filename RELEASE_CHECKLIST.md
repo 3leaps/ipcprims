@@ -58,13 +58,11 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
   git push origin "v${VERSION}"
   ```
 
-### Bindings (Stubs — v0.2.0+)
+### Bindings
 
-Go and TypeScript bindings are not yet present. When added:
-
-- [ ] Go bindings: Run go-bindings prep workflow, merge PR, then tag
-- [ ] Go submodule tag: `git tag -a "bindings/go/ipcprims/v${VERSION}" ...`
-- [ ] TypeScript: Run N-API prebuilds + npm publish workflows after signing
+- [ ] Go bindings: Verify `go test ./...` passes in `bindings/go/ipcprims/`
+- [ ] Go submodule tag: `git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"`
+- [ ] TypeScript (future): Run N-API prebuilds + npm publish workflows after signing
 
 ### CI Verification
 

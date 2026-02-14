@@ -9,7 +9,7 @@
 #   make build      - Build all crates
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
-.PHONY: ffi-header build-ffi
+.PHONY: ffi-header build-ffi go-bindings-sync go-build go-test
 .PHONY: precommit prepush deny audit
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -35,6 +35,10 @@ SFETCH = $(shell [ -x "$(BIN_DIR)/sfetch" ] && echo "$(BIN_DIR)/sfetch" || comma
 GONEAT = $(shell command -v goneat 2>/dev/null)
 
 CARGO = cargo
+GO_BINDINGS_DIR := bindings/go/ipcprims
+GO_OS := $(shell go env GOOS)
+GO_ARCH := $(shell go env GOARCH)
+GO_PLATFORM := $(GO_OS)-$(GO_ARCH)
 
 # -----------------------------------------------------------------------------
 # Default and Help
@@ -54,6 +58,9 @@ help: ## Show available targets
 	@echo "  install         Install ipcprims binary to ~/.local/bin"
 	@echo "  ffi-header      Generate C header for ipcprims-ffi"
 	@echo "  build-ffi       Build ipcprims-ffi static and shared libraries"
+	@echo "  go-bindings-sync  Sync generated header + static lib into Go bindings"
+	@echo "  go-build        Build Go bindings module"
+	@echo "  go-test         Run Go bindings tests"
 	@echo "  dogfood-cli     Run end-to-end CLI dogfooding matrix"
 	@echo "  clean           Remove build artifacts"
 	@echo ""
@@ -261,6 +268,25 @@ build-ffi: ffi-header ## Build FFI library artifacts
 	@echo "Building ipcprims-ffi..."
 	$(CARGO) build --release -p ipcprims-ffi
 	@echo "[ok] Built target/release/libipcprims_ffi.a and shared library variants"
+
+go-bindings-sync: build-ffi ## Sync FFI header + static lib into Go bindings
+	@echo "Syncing FFI artifacts for Go ($(GO_PLATFORM))..."
+	@mkdir -p $(GO_BINDINGS_DIR)/include
+	@mkdir -p $(GO_BINDINGS_DIR)/lib/local/$(GO_PLATFORM)
+	@mkdir -p $(GO_BINDINGS_DIR)/lib/$(GO_PLATFORM)
+	@cp crates/ipcprims-ffi/include/ipcprims.h $(GO_BINDINGS_DIR)/include/ipcprims.h
+	@cp target/release/libipcprims_ffi.a $(GO_BINDINGS_DIR)/lib/local/$(GO_PLATFORM)/libipcprims_ffi.a
+	@echo "[ok] Synced Go binding artifacts into $(GO_BINDINGS_DIR)"
+
+go-build: go-bindings-sync ## Build Go bindings
+	@echo "Building Go bindings..."
+	@cd $(GO_BINDINGS_DIR) && go build ./...
+	@echo "[ok] Go bindings build complete"
+
+go-test: go-bindings-sync ## Run Go bindings tests
+	@echo "Running Go bindings tests..."
+	@cd $(GO_BINDINGS_DIR) && go test ./...
+	@echo "[ok] Go bindings tests passed"
 
 clean: ## Remove build artifacts
 	@echo "Cleaning..."
