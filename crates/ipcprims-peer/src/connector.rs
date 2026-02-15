@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use ipcprims_frame::{FrameConfig, FrameReader, FrameWriter, DEFAULT_MAX_PAYLOAD};
+#[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
@@ -20,36 +21,53 @@ pub fn connect_with_config(
     schema_registry: Option<SchemaRegistryHandle>,
     peer_config: Option<PeerConfig>,
 ) -> Result<Peer> {
-    let stream = UnixDomainSocket::connect(path)?;
-    let reader_stream = stream.try_clone()?;
+    #[cfg(not(unix))]
+    {
+        let _ = (channels, handshake_config, schema_registry, peer_config);
+        let path = path.as_ref().to_path_buf();
+        return Err(ipcprims_transport::TransportError::Connect {
+            path,
+            source: std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+            ),
+        }
+        .into());
+    }
 
-    let frame_config = FrameConfig {
-        max_payload_size: handshake_config.max_handshake_payload,
-        read_timeout: Some(handshake_config.timeout),
-        write_timeout: Some(handshake_config.timeout),
-    };
+    #[cfg(unix)]
+    {
+        let stream = UnixDomainSocket::connect(path)?;
+        let reader_stream = stream.try_clone()?;
 
-    let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
-    let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
+        let frame_config = FrameConfig {
+            max_payload_size: handshake_config.max_handshake_payload,
+            read_timeout: Some(handshake_config.timeout),
+            write_timeout: Some(handshake_config.timeout),
+        };
 
-    let handshake =
-        handshake_client_with_config(&mut reader, &mut writer, channels, handshake_config)?;
-    // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
-    reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
-    writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
-    let id = handshake.peer_id.clone();
+        let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
+        let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
 
-    Ok(Peer::from_parts(
-        id,
-        reader,
-        writer,
-        handshake,
-        schema_registry,
-        peer_config.unwrap_or_default(),
-    ))
+        let handshake =
+            handshake_client_with_config(&mut reader, &mut writer, channels, handshake_config)?;
+        // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
+        reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+        writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+        let id = handshake.peer_id.clone();
+
+        Ok(Peer::from_parts(
+            id,
+            reader,
+            writer,
+            handshake,
+            schema_registry,
+            peer_config.unwrap_or_default(),
+        ))
+    }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::thread;
 

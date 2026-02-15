@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ipcprims_frame::{
     FrameConfig, FrameReader, FrameWriter, COMMAND, DATA, DEFAULT_MAX_PAYLOAD, ERROR, TELEMETRY,
 };
+#[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
@@ -12,7 +13,10 @@ use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
 
 /// Listens for and accepts peer connections.
 pub struct PeerListener {
+    #[cfg(unix)]
     socket: UnixDomainSocket,
+    #[cfg(not(unix))]
+    _unavailable: (),
     supported_channels: Vec<u16>,
     handshake_config: HandshakeConfig,
     schema_registry: Option<SchemaRegistryHandle>,
@@ -23,15 +27,31 @@ pub struct PeerListener {
 impl PeerListener {
     /// Bind to a Unix domain socket path.
     pub fn bind(path: impl AsRef<Path>) -> Result<Self> {
-        let socket = UnixDomainSocket::bind(path)?;
-        Ok(Self {
-            socket,
-            supported_channels: vec![COMMAND, DATA, TELEMETRY, ERROR],
-            handshake_config: HandshakeConfig::default(),
-            schema_registry: None,
-            peer_config: PeerConfig::default(),
-            next_peer_id: AtomicU64::new(1),
-        })
+        #[cfg(not(unix))]
+        {
+            let path = path.as_ref().to_path_buf();
+            return Err(ipcprims_transport::TransportError::Bind {
+                path,
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+                ),
+            }
+            .into());
+        }
+
+        #[cfg(unix)]
+        {
+            let socket = UnixDomainSocket::bind(path)?;
+            Ok(Self {
+                socket,
+                supported_channels: vec![COMMAND, DATA, TELEMETRY, ERROR],
+                handshake_config: HandshakeConfig::default(),
+                schema_registry: None,
+                peer_config: PeerConfig::default(),
+                next_peer_id: AtomicU64::new(1),
+            })
+        }
     }
 
     /// Override the supported channel set.
@@ -72,46 +92,67 @@ impl PeerListener {
 
     /// Accept next connection and use explicit peer id.
     pub fn accept_with_id(&self, peer_id: &str) -> Result<Peer> {
-        let stream = self.socket.accept()?;
-        let reader_stream = stream.try_clone()?;
+        #[cfg(not(unix))]
+        {
+            let _ = peer_id;
+            return Err(ipcprims_transport::TransportError::Accept(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+            ))
+            .into());
+        }
 
-        let frame_config = FrameConfig {
-            max_payload_size: self.handshake_config.max_handshake_payload,
-            read_timeout: Some(self.handshake_config.timeout),
-            write_timeout: Some(self.handshake_config.timeout),
-        };
+        #[cfg(unix)]
+        {
+            let stream = self.socket.accept()?;
+            let reader_stream = stream.try_clone()?;
 
-        let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
-        let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
+            let frame_config = FrameConfig {
+                max_payload_size: self.handshake_config.max_handshake_payload,
+                read_timeout: Some(self.handshake_config.timeout),
+                write_timeout: Some(self.handshake_config.timeout),
+            };
 
-        let handshake = handshake_server_with_config(
-            &mut reader,
-            &mut writer,
-            &self.supported_channels,
-            peer_id,
-            &self.handshake_config,
-        )?;
-        // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
-        reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
-        writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+            let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
+            let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
 
-        Ok(Peer::from_parts(
-            peer_id.to_string(),
-            reader,
-            writer,
-            handshake,
-            self.schema_registry.clone(),
-            self.peer_config.clone(),
-        ))
+            let handshake = handshake_server_with_config(
+                &mut reader,
+                &mut writer,
+                &self.supported_channels,
+                peer_id,
+                &self.handshake_config,
+            )?;
+            // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
+            reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+            writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+
+            Ok(Peer::from_parts(
+                peer_id.to_string(),
+                reader,
+                writer,
+                handshake,
+                self.schema_registry.clone(),
+                self.peer_config.clone(),
+            ))
+        }
     }
 
     /// Bound socket path.
     pub fn path(&self) -> &Path {
-        self.socket.path()
+        #[cfg(not(unix))]
+        {
+            unreachable!()
+        }
+
+        #[cfg(unix)]
+        {
+            self.socket.path()
+        }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::path::PathBuf;
     use std::thread;

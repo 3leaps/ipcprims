@@ -6,6 +6,30 @@
 
 ---
 
+## v0.1.2 — 2026-02-15
+
+Release pipeline: multi-platform FFI build matrix, SBOM generation, and structured draft releases. Resolves the v0.1.1 known issue — release.yml is now a full production pipeline.
+
+### Highlights
+
+- **release.yml rewrite**: 14 release-specific jobs (35 total with CI call) — builds CLI for 6 platforms (Linux 4 + macOS 2), FFI for 8 platforms (adds Windows x64 GNU/MSVC + arm64 MSVC), generates C header via cbindgen, CycloneDX SBOM via syft, and packages a structured FFI bundle with `MANIFEST.json`
+- **Peer crate Windows compilation**: cfg-gated `ipcprims-peer` Unix-specific imports so `ipcprims-ffi` compiles on all 3 Windows targets (msvc x64, gnu x64, msvc arm64) — prerequisite for Windows FFI builds in release pipeline
+- **Draft release with platform matrix**: release creates a DRAFT GitHub release with CLI archives, FFI bundle, C header, SBOM, licenses, and a platform support table in the body
+
+### Known Issues
+
+- **Go prebuilt libs**: Not yet populated — `go-bindings.yml` must run before tagging (d4-02).
+- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
+
+### What's Next
+
+- **v0.1.2 pre-tag**: Run `go-bindings.yml` to populate prebuilt libs, merge PR, then tag
+- **v0.2.0**: Tokio-native async API, named pipe transport for Windows, TCP transport (per DDR-0001), CLI P2 commands
+
+Full release details: [docs/releases/v0.1.2.md](docs/releases/v0.1.2.md)
+
+---
+
 ## v0.1.1 — 2026-02-15
 
 Infrastructure release: cross-language binding scaffolds and CI/release pipeline maturation. No new Rust API surface — bindings wrap the existing v0.1.0 API.

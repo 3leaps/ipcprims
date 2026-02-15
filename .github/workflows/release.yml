@@ -1,40 +1,628 @@
 name: Release
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 env:
   CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "11.0"
 jobs:
-  validate:
-    name: Validate Release
+  validate-version:
+    name: Validate Version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Extract version from tag
-        id: get_version
+      - name: Validate VERSION matches tag
+        id: version
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Validate tag matches VERSION file
-        run: |
-          VERSION_FILE=$(cat VERSION | tr -d '[:space:]')
-          TAG_VER="${{ steps.get_version.outputs.version }}"
-          if [[ "$TAG_VER" != "$VERSION_FILE" ]]; then
-            echo "ERROR: Tag version ($TAG_VER) != VERSION file ($VERSION_FILE)"
+          set -euo pipefail
+          FILE_VERSION=$(cat VERSION)
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "VERSION mismatch: file=$FILE_VERSION tag=$TAG_VERSION"
             exit 1
           fi
-          echo "✓ Tag matches VERSION file"
+          echo "version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
       - name: Check version consistency
-        run: |
-          chmod +x ./scripts/check-version.sh
-          ./scripts/check-version.sh
+        run: ./scripts/check-version.sh
   ci:
     name: Run Full CI
-    needs: validate
+    needs: validate-version
     uses: ./.github/workflows/ci.yml
+  verify-go-bindings-assets:
+    name: Verify Go Binding Assets
+    runs-on: ubuntu-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Go module contains prebuilt libs
+        run: |
+          set -euo pipefail
+
+          test -f bindings/go/ipcprims/go.mod
+          test -f bindings/go/ipcprims/include/ipcprims.h
+
+          for platform in \
+            darwin-amd64 \
+            darwin-arm64 \
+            linux-amd64 \
+            linux-amd64-musl \
+            linux-arm64 \
+            linux-arm64-musl \
+            windows-amd64
+          do
+            path="bindings/go/ipcprims/lib/${platform}/libipcprims_ffi.a"
+            if [ ! -f "$path" ]; then
+              echo "ERROR: missing $path"
+              echo "Release tags MUST point at a commit that includes prebuilt Go binding libs."
+              echo "Fix: merge the go-bindings update commit/PR and re-tag a new version."
+              exit 1
+            fi
+            if [ ! -s "$path" ]; then
+              echo "ERROR: empty $path"
+              exit 1
+            fi
+          done
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/fulmenhq/goneat-tools-runner-glibc:v0.3.1
+      options: --user root
+    needs: validate-version
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            glibc: "2.17"
+            artifact_suffix: linux-amd64
+          - target: x86_64-unknown-linux-musl
+            glibc: ""
+            artifact_suffix: linux-amd64-musl
+          - target: aarch64-unknown-linux-gnu
+            glibc: "2.17"
+            artifact_suffix: linux-arm64
+          - target: aarch64-unknown-linux-musl
+            glibc: ""
+            artifact_suffix: linux-arm64-musl
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          glibc="${{ matrix.glibc }}"
+          target="${{ matrix.target }}"
+          if [ -n "$glibc" ]; then
+            cargo zigbuild --release --target "${target}.${glibc}" -p ipcprims --features cli
+          else
+            cargo zigbuild --release --target "$target" -p ipcprims --features cli
+          fi
+      - name: Build FFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          glibc="${{ matrix.glibc }}"
+          target="${{ matrix.target }}"
+          if [ -n "$glibc" ]; then
+            cargo zigbuild --release --target "${target}.${glibc}" -p ipcprims-ffi
+          else
+            cargo zigbuild --release --target "$target" -p ipcprims-ffi
+          fi
+      - name: Package CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolve_target() {
+            local file="$1"
+            local glibc="${{ matrix.glibc }}"
+            local target="${{ matrix.target }}"
+            local candidates=("${target}")
+            if [ -n "$glibc" ]; then
+              candidates+=("${target}.${glibc}")
+            fi
+            for c in "${candidates[@]}"; do
+              if [ -f "target/${c}/release/${file}" ]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            echo "ERROR: ${file} not found for candidates: ${candidates[*]}" >&2
+            find target -maxdepth 4 -path "*/release/${file}" -print || true
+            exit 1
+          }
+
+          TARGET_DIR="$(resolve_target ipcprims)"
+          mkdir -p dist/cli
+          cp "target/${TARGET_DIR}/release/ipcprims" dist/cli/ipcprims
+          cp LICENSE-MIT LICENSE-APACHE dist/cli/
+          VERSION=${{ needs.validate-version.outputs.version }}
+          tar -czf "ipcprims-${VERSION}-${{ matrix.artifact_suffix }}.tar.gz" -C dist/cli .
+      - name: Package FFI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolve_target() {
+            local file="$1"
+            local glibc="${{ matrix.glibc }}"
+            local target="${{ matrix.target }}"
+            local candidates=("${target}")
+            if [ -n "$glibc" ]; then
+              candidates+=("${target}.${glibc}")
+            fi
+            for c in "${candidates[@]}"; do
+              if [ -f "target/${c}/release/${file}" ]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            echo "ERROR: ${file} not found for candidates: ${candidates[*]}" >&2
+            find target -maxdepth 4 -path "*/release/${file}" -print || true
+            exit 1
+          }
+
+          TARGET_DIR="$(resolve_target libipcprims_ffi.a)"
+          mkdir -p "dist/ffi/${{ matrix.artifact_suffix }}"
+          cp "target/${TARGET_DIR}/release/libipcprims_ffi.a" "dist/ffi/${{ matrix.artifact_suffix }}/"
+      - name: Package FFI (shared)
+        if: ${{ matrix.glibc != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolve_target() {
+            local file="$1"
+            local glibc="${{ matrix.glibc }}"
+            local target="${{ matrix.target }}"
+            local candidates=("${target}")
+            if [ -n "$glibc" ]; then
+              candidates+=("${target}.${glibc}")
+            fi
+            for c in "${candidates[@]}"; do
+              if [ -f "target/${c}/release/${file}" ]; then
+                echo "$c"
+                return 0
+              fi
+            done
+            echo "ERROR: ${file} not found for candidates: ${candidates[*]}" >&2
+            find target -maxdepth 4 -path "*/release/${file}" -print || true
+            exit 1
+          }
+
+          TARGET_DIR="$(resolve_target libipcprims_ffi.so)"
+          mkdir -p "dist/ffi-shared/${{ matrix.artifact_suffix }}"
+          cp "target/${TARGET_DIR}/release/libipcprims_ffi.so" "dist/ffi-shared/${{ matrix.artifact_suffix }}/"
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.artifact_suffix }}
+          path: ipcprims-${{ needs.validate-version.outputs.version }}-${{ matrix.artifact_suffix }}.tar.gz
+      - name: Upload FFI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-${{ matrix.artifact_suffix }}
+          path: dist/ffi/${{ matrix.artifact_suffix }}
+      - name: Upload FFI artifact (shared)
+        if: ${{ matrix.glibc != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-${{ matrix.artifact_suffix }}
+          path: dist/ffi-shared/${{ matrix.artifact_suffix }}
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    needs: validate-version
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - name: Build CLI (both targets)
+        run: |
+          set -euo pipefail
+          cargo build --release --target x86_64-apple-darwin -p ipcprims --features cli
+          cargo build --release --target aarch64-apple-darwin -p ipcprims --features cli
+      - name: Build FFI (both targets)
+        run: |
+          set -euo pipefail
+          cargo build --release --target x86_64-apple-darwin -p ipcprims-ffi
+          cargo build --release --target aarch64-apple-darwin -p ipcprims-ffi
+      - name: Fix dylib install_name (@rpath)
+        run: |
+          set -euo pipefail
+          install_name_tool -id "@rpath/libipcprims_ffi.dylib" target/x86_64-apple-darwin/release/libipcprims_ffi.dylib
+          install_name_tool -id "@rpath/libipcprims_ffi.dylib" target/aarch64-apple-darwin/release/libipcprims_ffi.dylib
+      - name: Package CLI (darwin-amd64)
+        run: |
+          set -euo pipefail
+          mkdir -p dist/cli-amd64
+          cp target/x86_64-apple-darwin/release/ipcprims dist/cli-amd64/ipcprims
+          cp LICENSE-MIT LICENSE-APACHE dist/cli-amd64/
+          tar -czf ipcprims-${{ needs.validate-version.outputs.version }}-darwin-amd64.tar.gz -C dist/cli-amd64 .
+      - name: Package CLI (darwin-arm64)
+        run: |
+          set -euo pipefail
+          mkdir -p dist/cli-arm64
+          cp target/aarch64-apple-darwin/release/ipcprims dist/cli-arm64/ipcprims
+          cp LICENSE-MIT LICENSE-APACHE dist/cli-arm64/
+          tar -czf ipcprims-${{ needs.validate-version.outputs.version }}-darwin-arm64.tar.gz -C dist/cli-arm64 .
+      - name: Package FFI
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ffi/darwin-amd64 dist/ffi/darwin-arm64
+          cp target/x86_64-apple-darwin/release/libipcprims_ffi.a dist/ffi/darwin-amd64/
+          cp target/aarch64-apple-darwin/release/libipcprims_ffi.a dist/ffi/darwin-arm64/
+      - name: Package FFI (shared)
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ffi-shared/darwin-amd64 dist/ffi-shared/darwin-arm64
+          cp target/x86_64-apple-darwin/release/libipcprims_ffi.dylib dist/ffi-shared/darwin-amd64/
+          cp target/aarch64-apple-darwin/release/libipcprims_ffi.dylib dist/ffi-shared/darwin-arm64/
+      - name: Upload CLI artifact (darwin-amd64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-darwin-amd64
+          path: ipcprims-${{ needs.validate-version.outputs.version }}-darwin-amd64.tar.gz
+      - name: Upload CLI artifact (darwin-arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-darwin-arm64
+          path: ipcprims-${{ needs.validate-version.outputs.version }}-darwin-arm64.tar.gz
+      - name: Upload FFI artifact (darwin-amd64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-darwin-amd64
+          path: dist/ffi/darwin-amd64
+      - name: Upload FFI artifact (shared, darwin-amd64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-darwin-amd64
+          path: dist/ffi-shared/darwin-amd64
+      - name: Upload FFI artifact (darwin-arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-darwin-arm64
+          path: dist/ffi/darwin-arm64
+      - name: Upload FFI artifact (shared, darwin-arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-darwin-arm64
+          path: dist/ffi-shared/darwin-arm64
+  build-windows:
+    name: Build Windows (GNU, FFI)
+    runs-on: windows-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - name: Install MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+          path-type: inherit
+      - name: Build FFI (GNU target)
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cargo build --release --target x86_64-pc-windows-gnu -p ipcprims-ffi
+      - name: Package FFI (static)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ffi/windows-amd64
+          cp target/x86_64-pc-windows-gnu/release/libipcprims_ffi.a dist/ffi/windows-amd64/
+      - name: Package FFI (shared)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ffi-shared/windows-amd64-gnu
+          cp target/x86_64-pc-windows-gnu/release/ipcprims_ffi.dll dist/ffi-shared/windows-amd64-gnu/
+          cp target/x86_64-pc-windows-gnu/release/libipcprims_ffi.dll.a dist/ffi-shared/windows-amd64-gnu/
+      - name: Upload FFI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-windows-amd64
+          path: dist/ffi/windows-amd64
+      - name: Upload FFI artifact (shared GNU)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-windows-amd64-gnu
+          path: dist/ffi-shared/windows-amd64-gnu
+  build-windows-arm64:
+    name: Build Windows arm64 (MSVC, FFI)
+    runs-on: windows-latest-arm64-s
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - name: Build FFI
+        shell: pwsh
+        run: cargo build --release --target aarch64-pc-windows-msvc -p ipcprims-ffi
+      - name: Package FFI (static)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist/ffi/windows-arm64 | Out-Null
+          Copy-Item target/aarch64-pc-windows-msvc/release/ipcprims_ffi.lib dist/ffi/windows-arm64/
+      - name: Package FFI (shared)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist/ffi-shared/windows-arm64 | Out-Null
+          Copy-Item target/aarch64-pc-windows-msvc/release/ipcprims_ffi.dll dist/ffi-shared/windows-arm64/
+          if (Test-Path target/aarch64-pc-windows-msvc/release/ipcprims_ffi.dll.lib) {
+            Copy-Item target/aarch64-pc-windows-msvc/release/ipcprims_ffi.dll.lib dist/ffi-shared/windows-arm64/
+          }
+          if (Test-Path target/aarch64-pc-windows-msvc/release/ipcprims_ffi.lib) {
+            Copy-Item target/aarch64-pc-windows-msvc/release/ipcprims_ffi.lib dist/ffi-shared/windows-arm64/
+          }
+      - name: Upload FFI artifact (static)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-windows-arm64
+          path: dist/ffi/windows-arm64
+      - name: Upload FFI artifact (shared)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-windows-arm64
+          path: dist/ffi-shared/windows-arm64
+  build-windows-msvc:
+    name: Build Windows x64 (MSVC, shared)
+    runs-on: windows-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build FFI (MSVC target)
+        shell: pwsh
+        run: cargo build --release --target x86_64-pc-windows-msvc -p ipcprims-ffi
+      - name: Package FFI (shared)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist/ffi-shared/windows-amd64-msvc | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/ipcprims_ffi.dll dist/ffi-shared/windows-amd64-msvc/
+          if (Test-Path target/x86_64-pc-windows-msvc/release/ipcprims_ffi.dll.lib) {
+            Copy-Item target/x86_64-pc-windows-msvc/release/ipcprims_ffi.dll.lib dist/ffi-shared/windows-amd64-msvc/
+          }
+          if (Test-Path target/x86_64-pc-windows-msvc/release/ipcprims_ffi.lib) {
+            Copy-Item target/x86_64-pc-windows-msvc/release/ipcprims_ffi.lib dist/ffi-shared/windows-amd64-msvc/
+          }
+      - name: Upload FFI artifact (shared)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-shared-windows-amd64-msvc
+          path: dist/ffi-shared/windows-amd64-msvc
+  cbindgen:
+    name: Generate C Header
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/fulmenhq/goneat-tools-runner-glibc:v0.3.1
+      options: --user root
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate C header
+        run: cbindgen --config cbindgen.toml --crate ipcprims-ffi --output ipcprims.h
+      - name: Upload header
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-header
+          path: ipcprims.h
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/fulmenhq/sbom-tools:latest
+      options: --user 1001
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SBOM (CycloneDX)
+        run: syft dir:. -o cyclonedx-json > sbom-${{ needs.validate-version.outputs.version }}.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom-${{ needs.validate-version.outputs.version }}.cdx.json
+  verify-ffi-shared-assets:
+    name: Verify FFI Shared Artifacts
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-macos, build-windows-msvc, build-windows-arm64]
+    steps:
+      - name: Download shared-lib artifacts
+        uses: actions/download-artifact@v4.1.3
+        with:
+          pattern: ffi-shared-*
+          path: ffi-shared-libs
+      - name: Verify expected shared libs present
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          require_file() {
+            local path="$1"
+            if [ ! -f "$path" ]; then
+              echo "ERROR: missing required shared lib: $path" >&2
+              echo "Available files:" >&2
+              find ffi-shared-libs -type f -maxdepth 4 -print || true
+              exit 1
+            fi
+          }
+
+          require_file "ffi-shared-libs/ffi-shared-linux-amd64/libipcprims_ffi.so"
+          require_file "ffi-shared-libs/ffi-shared-linux-arm64/libipcprims_ffi.so"
+          require_file "ffi-shared-libs/ffi-shared-darwin-amd64/libipcprims_ffi.dylib"
+          require_file "ffi-shared-libs/ffi-shared-darwin-arm64/libipcprims_ffi.dylib"
+          require_file "ffi-shared-libs/ffi-shared-windows-amd64-msvc/ipcprims_ffi.dll"
+          require_file "ffi-shared-libs/ffi-shared-windows-arm64/ipcprims_ffi.dll"
+
+          if find ffi-shared-libs -maxdepth 2 -type d -name 'ffi-shared-*-musl' | grep -q .; then
+            echo "ERROR: unexpected musl shared-lib artifacts present" >&2
+            find ffi-shared-libs -maxdepth 2 -type d -name 'ffi-shared-*-musl' -print >&2 || true
+            exit 1
+          fi
+  package-ffi-bundle:
+    name: Package FFI Bundle
+    runs-on: ubuntu-latest
+    needs:
+      - validate-version
+      - build-linux
+      - build-macos
+      - build-windows
+      - build-windows-arm64
+      - build-windows-msvc
+      - cbindgen
+      - verify-ffi-shared-assets
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all FFI artifacts
+        uses: actions/download-artifact@v4.1.3
+        with:
+          pattern: ffi-*
+          path: ffi-libs
+      - name: Download C header
+        uses: actions/download-artifact@v4.1.3
+        with:
+          name: c-header
+          path: ffi-libs
+      - name: Package FFI bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.validate-version.outputs.version }}
+          mkdir -p bundle/lib bundle/include
+
+          require_file() {
+            local path="$1"
+            if [ ! -f "$path" ]; then
+              echo "ERROR: required file missing: $path" >&2
+              exit 1
+            fi
+          }
+
+          copy_static() {
+            local platform="$1"
+            local src="ffi-libs/ffi-${platform}/libipcprims_ffi.a"
+            require_file "$src"
+            mkdir -p "bundle/lib/${platform}/static"
+            cp "$src" "bundle/lib/${platform}/static/"
+          }
+
+          copy_shared_linux() {
+            local platform="$1"
+            local src="ffi-libs/ffi-shared-${platform}/libipcprims_ffi.so"
+            require_file "$src"
+            mkdir -p "bundle/lib/${platform}/shared"
+            cp "$src" "bundle/lib/${platform}/shared/"
+          }
+
+          copy_shared_darwin() {
+            local platform="$1"
+            local src="ffi-libs/ffi-shared-${platform}/libipcprims_ffi.dylib"
+            require_file "$src"
+            mkdir -p "bundle/lib/${platform}/shared"
+            cp "$src" "bundle/lib/${platform}/shared/"
+          }
+
+          copy_shared_windows_amd64() {
+            local gnu_dir="ffi-libs/ffi-shared-windows-amd64-gnu"
+            local msvc_dir="ffi-libs/ffi-shared-windows-amd64-msvc"
+            require_file "$gnu_dir/ipcprims_ffi.dll"
+            mkdir -p "bundle/lib/windows-amd64/shared"
+            cp "$gnu_dir/ipcprims_ffi.dll" "bundle/lib/windows-amd64/shared/"
+            require_file "$gnu_dir/libipcprims_ffi.dll.a"
+            cp "$gnu_dir/libipcprims_ffi.dll.a" "bundle/lib/windows-amd64/shared/"
+            if [ -f "$msvc_dir/ipcprims_ffi.lib" ]; then
+              cp "$msvc_dir/ipcprims_ffi.lib" "bundle/lib/windows-amd64/shared/"
+            fi
+            if [ -f "$msvc_dir/ipcprims_ffi.dll.lib" ]; then
+              cp "$msvc_dir/ipcprims_ffi.dll.lib" "bundle/lib/windows-amd64/shared/"
+            fi
+          }
+
+          copy_shared_windows_arm64() {
+            local dir="ffi-libs/ffi-shared-windows-arm64"
+            require_file "$dir/ipcprims_ffi.dll"
+            mkdir -p "bundle/lib/windows-arm64/shared"
+            cp "$dir/ipcprims_ffi.dll" "bundle/lib/windows-arm64/shared/"
+            if [ -f "$dir/ipcprims_ffi.lib" ]; then
+              cp "$dir/ipcprims_ffi.lib" "bundle/lib/windows-arm64/shared/"
+            fi
+            if [ -f "$dir/ipcprims_ffi.dll.lib" ]; then
+              cp "$dir/ipcprims_ffi.dll.lib" "bundle/lib/windows-arm64/shared/"
+            fi
+          }
+
+          copy_static_windows_msvc() {
+            local platform="$1"
+            local src="ffi-libs/ffi-${platform}/ipcprims_ffi.lib"
+            require_file "$src"
+            mkdir -p "bundle/lib/${platform}/static"
+            cp "$src" "bundle/lib/${platform}/static/"
+          }
+
+          copy_static linux-amd64
+          copy_static linux-amd64-musl
+          copy_static linux-arm64
+          copy_static linux-arm64-musl
+          copy_static darwin-amd64
+          copy_static darwin-arm64
+          copy_static windows-amd64
+          copy_static_windows_msvc windows-arm64
+
+          copy_shared_linux linux-amd64
+          copy_shared_linux linux-arm64
+          copy_shared_darwin darwin-amd64
+          copy_shared_darwin darwin-arm64
+          copy_shared_windows_amd64
+          copy_shared_windows_arm64
+
+          require_file ffi-libs/ipcprims.h
+          cp ffi-libs/ipcprims.h bundle/include/
+
+          echo "$VERSION" > bundle/VERSION
+          cp LICENSE-MIT LICENSE-APACHE bundle/
+
+          cat > bundle/MANIFEST.json << EOF
+          {
+            "name": "ipcprims-ffi",
+            "version": "$VERSION",
+            "platforms": [
+              "linux-amd64",
+              "linux-amd64-musl",
+              "linux-arm64",
+              "linux-arm64-musl",
+              "darwin-amd64",
+              "darwin-arm64",
+              "windows-amd64",
+              "windows-arm64"
+            ],
+            "notes": {
+              "windows-arm64": "Go bindings not supported (MinGW lacks arm64 support)"
+            }
+          }
+          EOF
+
+          tar -czf "ipcprims-ffi-${VERSION}-libs.tar.gz" -C bundle .
+      - name: Upload FFI bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-bundle
+          path: ipcprims-ffi-${{ needs.validate-version.outputs.version }}-libs.tar.gz
   publish-check:
     name: Publish Check
     needs: ci
@@ -42,48 +630,82 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify all crates package cleanly
-        run: |
-          echo "Packaging all workspace crates (dry-run)..."
-          cargo package --workspace
-          echo "✓ All crates package successfully"
-  create-release:
-    name: Create GitHub Release
-    needs: publish-check
+        run: cargo package --workspace
+  publish:
+    name: Publish Release
     runs-on: ubuntu-latest
+    needs:
+      - validate-version
+      - verify-go-bindings-assets
+      - build-linux
+      - build-macos
+      - build-windows
+      - build-windows-arm64
+      - build-windows-msvc
+      - cbindgen
+      - sbom
+      - verify-ffi-shared-assets
+      - package-ffi-bundle
+      - publish-check
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Extract version from tag
-        id: get_version
+      - name: Download all CLI artifacts
+        uses: actions/download-artifact@v4.1.3
+        with:
+          pattern: cli-*
+          path: release-cli
+      - name: Download FFI bundle
+        uses: actions/download-artifact@v4.1.3
+        with:
+          name: ffi-bundle
+          path: release-ffi
+      - name: Download C header
+        uses: actions/download-artifact@v4.1.3
+        with:
+          name: c-header
+          path: release-header
+      - name: Download SBOM
+        uses: actions/download-artifact@v4.1.3
+        with:
+          name: sbom
+          path: release-sbom
+      - name: Organize release files
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Extract release notes
-        id: release_notes
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          awk "/^## v$VERSION/,/^## v/" RELEASE_NOTES.md | sed '$d' > /tmp/release-notes.md
-          if [[ ! -s /tmp/release-notes.md ]]; then
-            echo "Release $VERSION" > /tmp/release-notes.md
-            echo "" >> /tmp/release-notes.md
-            echo "See [RELEASE_NOTES.md](RELEASE_NOTES.md) for details." >> /tmp/release-notes.md
-          fi
-          cat /tmp/release-notes.md
-      - name: Create GitHub Release
+          set -euo pipefail
+          mkdir -p release
+
+          find release-cli -type f -name '*.tar.gz' -exec mv {} release/ \;
+          mv release-ffi/*.tar.gz release/
+          mv release-header/ipcprims.h release/
+          mv release-sbom/*.json release/
+          cp LICENSE-MIT LICENSE-APACHE release/
+
+          ls -la release/
+      - name: Create Draft Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: Release ${{ steps.get_version.outputs.version }}
-          body_path: /tmp/release-notes.md
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Next steps
-        run: |
-          echo "::notice::GitHub release created successfully"
-          echo "::notice::To publish to crates.io, run: make publish-crates"
-          echo "::notice::This requires CARGO_REGISTRY_TOKEN to be set"
+          files: release/*
+          draft: true
+          body: |
+            ## ipcprims v${{ needs.validate-version.outputs.version }}
+
+            Reliable inter-process communication with permissive licensing.
+
+            ### Platform Matrix
+
+            | Platform | CLI | FFI | Go Bindings |
+            |----------|-----|-----|-------------|
+            | Linux x64 (glibc 2.17+) | `ipcprims-*-linux-amd64.tar.gz` | In FFI bundle | Supported |
+            | Linux x64 (musl) | `ipcprims-*-linux-amd64-musl.tar.gz` | In FFI bundle | Supported |
+            | Linux arm64 (glibc 2.17+) | `ipcprims-*-linux-arm64.tar.gz` | In FFI bundle | Supported |
+            | Linux arm64 (musl) | `ipcprims-*-linux-arm64-musl.tar.gz` | In FFI bundle | Supported |
+            | macOS x64 | `ipcprims-*-darwin-amd64.tar.gz` | In FFI bundle | Supported |
+            | macOS arm64 | `ipcprims-*-darwin-arm64.tar.gz` | In FFI bundle | Supported |
+            | Windows x64 | **N/A** | In FFI bundle | Supported |
+            | Windows arm64 | **N/A** | In FFI bundle | **Not supported** |
+
+            Notes:
+            - No Windows CLI artifacts in v0.1.x (named pipe transport lands in v0.2.0).
+            - No Windows arm64 Go bindings (MinGW lacks arm64 support).

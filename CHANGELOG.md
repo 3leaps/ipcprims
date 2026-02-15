@@ -15,6 +15,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 _No unreleased changes._
 
+## [0.1.2] — 2026-02-15
+
+Release pipeline: multi-platform FFI build matrix, SBOM generation, and structured draft releases — matching the sysprims/docprims release pattern.
+
+### Changed
+
+- **release.yml**: Complete rewrite from 4-job skeleton to 14 release-specific jobs (35 total including CI call) — multi-platform FFI builds, cbindgen header, CycloneDX SBOM, FFI bundle packaging, and draft GitHub release with platform matrix table
+- **ipcprims-peer**: cfg-gated Unix-specific imports behind `#[cfg(unix)]` so `ipcprims-ffi` compiles on Windows targets; non-Unix builds return explicit `Unsupported` errors (no fake runtime support)
+
+### Fixed
+
+- **release.yml known issue**: Resolved the v0.1.1 known issue — release pipeline now produces full multi-platform FFI bundles instead of the minimal skeleton
+
+### Known Issues
+
+- **Go prebuilt libs**: Not yet populated — `go-bindings.yml` must run before tagging to create prebuilt libs PR. Tracked as v0.1.2 pre-tag checklist item (d4-02).
+- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dep tree. No functional impact.
+
 ## [0.1.1] — 2026-02-15
 
 Infrastructure release: cross-language binding scaffolds (FFI, Go, TypeScript) and CI/release pipeline maturation.
@@ -102,6 +121,7 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/3leaps/ipcprims/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/3leaps/ipcprims/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/3leaps/ipcprims/releases/tag/v0.1.0

@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "comfy-table",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-ffi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ipcprims-frame",
  "ipcprims-peer",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-frame"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "ipcprims-transport",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-napi"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ipcprims-frame",
  "ipcprims-peer",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-peer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ipcprims-frame",
  "ipcprims-schema",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-schema"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ipcprims-frame",
  "jsonschema",
@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "ipcprims-transport"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "libc",
