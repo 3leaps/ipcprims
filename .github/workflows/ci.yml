@@ -24,21 +24,25 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
   windows-cross-check:
-    name: Windows Cross-Target Check (no SDK)
-    runs-on: ubuntu-latest
+    name: Windows Check (${{ matrix.target }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+          - target: x86_64-pc-windows-gnu
+          - target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc,x86_64-pc-windows-gnu,aarch64-pc-windows-msvc
-      # cargo check does type checking only (no linking), so this works without
-      # the Windows SDK. Fast guardrail for Windows-only compile errors.
-      - name: cargo check (windows msvc x64)
-        run: cargo check --workspace --exclude ipcprims-napi --target x86_64-pc-windows-msvc
-      - name: cargo check (windows gnu x64)
-        run: cargo check --workspace --exclude ipcprims-napi --target x86_64-pc-windows-gnu
-      - name: cargo check (windows msvc arm64)
-        run: cargo check --workspace --exclude ipcprims-napi --target aarch64-pc-windows-msvc
+          targets: ${{ matrix.target }}
+      # Runs on a real Windows runner — ring (transitive via jsonschema →
+      # reqwest → rustls) requires MSVC lib.exe for its build script.
+      # Unlike sysprims, cross-check from Linux doesn't work here.
+      - name: cargo check
+        run: cargo check --workspace --exclude ipcprims-napi --target ${{ matrix.target }}
   test:
     name: Test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -48,6 +52,8 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest-arm64-s
           - target: aarch64-apple-darwin
             os: macos-latest
     steps:
@@ -63,6 +69,8 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest-arm64-s
           - target: aarch64-apple-darwin
             os: macos-latest
     steps:
