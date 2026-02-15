@@ -42,8 +42,10 @@ jobs:
       # reqwest → rustls) requires MSVC lib.exe for its build script.
       # Unlike sysprims, cross-check from Linux doesn't work here.
       #
+      # Checks the 3 portable foundation crates. Peer, FFI, and CLI depend
+      # on UnixDomainSocket which has no Windows impl yet (v0.2.0).
       - name: cargo check
-        run: cargo check --workspace --exclude ipcprims-napi --target ${{ matrix.target }}
+        run: cargo check -p ipcprims-transport -p ipcprims-frame -p ipcprims-schema --target ${{ matrix.target }}
   test:
     name: Test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
