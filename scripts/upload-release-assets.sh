@@ -60,26 +60,28 @@ if [ -f "$RELEASE_NOTES" ]; then
 	UPLOAD_FILES+=("$RELEASE_NOTES")
 fi
 
-# Add source archives if present
-for archive in "ipcprims-"*"-source.tar.gz" "ipcprims-"*"-source.zip"; do
-	if [ -f "$archive" ]; then
-		UPLOAD_FILES+=("$archive")
+# Note: source archives (ipcprims-*-source.tar.gz/zip) and licenses (LICENSE-*)
+# are already on the release — they were downloaded for checksumming only.
+# Do NOT re-upload them; it wastes API calls and can hit rate limits.
+
+# FFI bundle
+for ffi in ipcprims-ffi-*.tar.gz; do
+	if [ -f "$ffi" ]; then
+		UPLOAD_FILES+=("$ffi")
 	fi
 done
 
-# Add licenses if present
-for lic in LICENSE-MIT LICENSE-APACHE; do
-	if [ -f "$lic" ]; then
-		UPLOAD_FILES+=("$lic")
+# Standalone C header
+if [ -f "ipcprims.h" ]; then
+	UPLOAD_FILES+=("ipcprims.h")
+fi
+
+# SBOM
+for sbom in sbom-*.json; do
+	if [ -f "$sbom" ]; then
+		UPLOAD_FILES+=("$sbom")
 	fi
 done
-
-# --- Stubs for future asset types ---
-# CLI binaries (v0.2.0+):
-#   for bin in ipcprims-*.tar.gz; do UPLOAD_FILES+=("$bin"); done
-#
-# FFI libraries (v0.2.0+):
-#   for ffi in ipcprims-ffi-*.tar.gz; do UPLOAD_FILES+=("$ffi"); done
 
 echo "Uploading files:"
 printf '  %s\n' "${UPLOAD_FILES[@]}"

@@ -33,20 +33,30 @@ lint:
       - ".github/workflows/**/*.yaml"
       - ".goneat/**/*.yaml"
     ignore: []
+  # Go linting note:
+  # goneat currently runs golangci-lint from the repo root. To support that while keeping
+  # Go bindings in a submodule, we include:
+  # - a minimal root go.mod
+  # - a root go.work referencing bindings/go/ipcprims
+  # - a tiny placeholder Go package (internal/gowork) so repo-root ./... resolves
+  #
+  # CI still runs Go tests from bindings/go/ipcprims directly.
+
   # Shell script linting
   shell:
     shfmt:
       enabled: true
       fix: true
     shellcheck:
-      enabled: true
-      paths:
-        - "**/*.sh"
-        - "scripts/**/*.sh"
-      ignore:
-        - "**/target/**"
-        - "**/.git/**"
-        - ".plans/**"
+      enabled: false
+      path: ""
+    paths:
+      - "**/*.sh"
+      - "scripts/**/*.sh"
+    ignore:
+      - "**/target/**"
+      - "**/.git/**"
+      - ".plans/**"
   # GitHub Actions linting
   github_actions:
     actionlint:

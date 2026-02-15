@@ -48,6 +48,10 @@ pub(crate) fn map_peer_error(err: &PeerError) -> IpcResult {
         PeerError::Schema(_) => IpcResult::SchemaError,
         PeerError::Timeout(_) => IpcResult::Timeout,
         PeerError::ShutdownFailed(_) => IpcResult::ShutdownFailed,
+        // Catch any variants activated by workspace feature unification
+        // (e.g. Schema when another crate enables ipcprims-peer/schema)
+        #[allow(unreachable_patterns)]
+        _ => IpcResult::Internal,
     }
 }
 

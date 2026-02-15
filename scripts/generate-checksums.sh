@@ -22,10 +22,10 @@ CHECKSUM_PATTERNS=(
 	'*.tar.gz'
 	'*.zip'
 
-	# Standalone headers (v0.2.0+ FFI)
+	# Standalone headers (FFI)
 	'*.h'
 
-	# Standalone libraries (v0.2.0+ FFI)
+	# Standalone libraries (FFI)
 	'*.a'
 	'*.lib'
 	'*.so'

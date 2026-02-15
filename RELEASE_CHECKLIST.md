@@ -58,7 +58,10 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
   git push origin "v${VERSION}"
   ```
 
-### Bindings (Pre-Tag)
+### Bindings (Pre-Tag) — skip for source-only releases
+
+> **Note**: These steps apply when releasing binary/FFI artifacts (v0.1.2+).
+> For source-only releases (v0.1.0, v0.1.1), skip to CI Verification.
 
 - [ ] **Go bindings prep** (MUST happen before tagging):
   1. Run `go-bindings.yml` workflow via GitHub Actions (manual dispatch, input: version)
@@ -69,7 +72,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] Verify `go test ./...` passes in `bindings/go/ipcprims/`
 - [ ] Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
 
-### Bindings (Post-Signing)
+### Bindings (Post-Signing) — skip for source-only releases
 
 - [ ] **TypeScript N-API prebuilds**: Run `typescript-napi-prebuilds.yml` on the tagged commit
 - [ ] **TypeScript npm publish**: Run `typescript-npm-publish.yml` with OIDC trusted publishing

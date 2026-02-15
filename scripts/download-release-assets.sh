@@ -12,11 +12,12 @@ echo "Downloading release assets for $TAG to $DEST..."
 
 mkdir -p "$DEST"
 
-# Download Rust crate archives and licenses
-# v0.1.0: source-only release (no pre-built binaries)
-# v0.2.0+: add --pattern 'ipcprims-*.tar.gz' for CLI binaries, FFI libs
+# Download release assets: licenses, FFI bundle, header, SBOM
 gh release download "$TAG" --dir "$DEST" --clobber \
 	--pattern 'LICENSE-*' \
+	--pattern 'ipcprims-ffi-*.tar.gz' \
+	--pattern 'ipcprims.h' \
+	--pattern 'sbom-*.json' \
 	2>/dev/null || true
 
 # Download source archives (GitHub auto-generates these but doesn't list as assets)
@@ -32,18 +33,8 @@ for lic in LICENSE-MIT LICENSE-APACHE; do
 	fi
 done
 
-# --- Stubs for future release types ---
-# Go bindings (v0.2.0+):
-#   gh release download "$TAG" --dir "$DEST" --clobber \
-#     --pattern 'ipcprims-ffi-*.tar.gz' \
-#     --pattern 'ipcprims.h'
-#
-# TypeScript bindings (v0.2.0+):
-#   N-API prebuilds are published via npm, not GitHub assets.
-#
-# SBOM (when added):
-#   gh release download "$TAG" --dir "$DEST" --clobber \
-#     --pattern 'sbom-*.json'
+# FFI bundle, header, and SBOM are included in the main download above.
+# TypeScript N-API prebuilds are published via npm, not GitHub assets.
 
 echo "Downloaded to $DEST:"
 ls -la "$DEST"

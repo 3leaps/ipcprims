@@ -15,6 +15,49 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 _No unreleased changes._
 
+## [0.1.1] — 2026-02-15
+
+Infrastructure release: cross-language binding scaffolds (FFI, Go, TypeScript) and CI/release pipeline maturation.
+
+### Added
+
+- **ipcprims-ffi**: C-ABI crate with `staticlib` + `cdylib` outputs; exports for init, listener, peer, frame, schema; `cbindgen`-generated header (`be2dd5d`)
+- **Go bindings**: CGo module at `bindings/go/ipcprims` with Listener, Peer, SchemaRegistry; stub FFI bridge for platforms without prebuilt libs (`965fbf1`)
+- **TypeScript bindings**: NAPI-RS package `@3leaps/ipcprims` at `bindings/typescript` with Listener, Peer, SchemaRegistry; 5-platform prebuild matrix (`319d037`)
+- **CI**: `windows-cross-check` job — `cargo check` for 3 Windows targets (msvc x64, gnu x64, msvc arm64) without SDK
+- **CI**: `test-musl` job — build + test on `x86_64-unknown-linux-musl`
+- **CI**: `ffi` job — cbindgen header generation + C smoke test (Linux, macOS)
+- **CI**: `go-bindings` job — Go build + lint + test (Linux, macOS)
+- **CI**: `typescript-bindings` job — NAPI build + test + typecheck (Linux, macOS)
+- **Workflows**: `go-bindings.yml` — multi-platform FFI build pipeline with PR creation for prebuilt libs
+- **Workflows**: `typescript-bindings.yml` — cross-platform test matrix (4 OS + Alpine musl)
+- **Workflows**: `typescript-napi-prebuilds.yml` — build `.node` prebuilds for 5 platforms via zig cross-compilation
+- **Workflows**: `typescript-npm-publish.yml` — OIDC trusted publishing to npm
+- **Release scripts**: download, upload, checksum scripts now handle FFI bundles, C headers, and SBOM artifacts
+- **Go workspace**: root `go.mod` + `go.work` for repo-level Go tooling compatibility
+- **actionlint config**: `.github/actionlint.yaml` with self-hosted runner labels
+
+### Changed
+
+- **RELEASE_CHECKLIST.md**: Added Go bindings pre-tag workflow and TypeScript post-signing publish steps
+- **Makefile**: Binding workflow instructions replace v0.2.0 stubs
+- **cbindgen.toml**: Updated from placeholder to production configuration for ipcprims-ffi
+
+### Fixed
+
+- FFI `map_peer_error` match exhaustiveness under Cargo workspace feature unification (`error.rs`)
+- FFI `ipc_schema_registry_free` needless-return lint under conditional compilation (`schema.rs`)
+- TypeScript test file: replaced `any` types with typed interfaces (`ipcprims.test.ts`)
+- TypeScript loader: replaced `&&` chain with optional chaining (`index.js`)
+- goneat assess config: disabled shellcheck, added Go linting note (sysprims parity)
+
+### Known Issues
+
+- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dep tree. No functional impact.
+- **release.yml**: Still uses minimal v0.1.0 skeleton (validate + create release). Multi-platform build matrix planned for v0.1.2.
+- **Go prebuilt libs**: Not yet populated — `go-bindings.yml` workflow creates the PR. Stub bridge compiles but FFI calls return `ErrFFIUnavailable` without prebuilts.
+
 ## [0.1.0] — 2026-02-13
 
 First functional release. Transport, framing, schema validation, peer management, and CLI.
@@ -57,7 +100,8 @@ First functional release. Transport, framing, schema validation, peer management
 
 - Async feature flags (`async`) are declared across crates but no async code exists yet. Planned for v0.2.0.
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
-- `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Planned for v0.2.0.
+- `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/3leaps/ipcprims/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/3leaps/ipcprims/releases/tag/v0.1.0

@@ -104,6 +104,7 @@ pub unsafe extern "C" fn ipc_schema_registry_free(registry: IpcSchemaRegistryHan
         #[cfg(not(feature = "schema"))]
         {
             let _ = registry;
+            #[allow(clippy::needless_return)]
             return;
         }
 
