@@ -6,7 +6,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["index.d.ts", "__tests__/**/*.ts"]
+  "include": [
+    "index.d.ts",
+    "__tests__/**/*.ts"
+  ]
 }

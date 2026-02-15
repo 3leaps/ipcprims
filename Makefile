@@ -435,14 +435,15 @@ release-check: version-check ## Version consistency + package check
 #   IPCPRIMS_PGP_KEY_ID    - PGP key ID for GPG signing (optional)
 #   IPCPRIMS_GPG_HOMEDIR   - Custom GPG home directory (optional)
 #
-# --- Stubs for future bindings ---
-# Go bindings (v0.2.0+):
-#   Run go-bindings prep workflow before tagging.
-#   Merge PR, then tag the merge commit.
+# --- Bindings release workflow ---
+# Go bindings:
+#   Before tagging, run go-bindings.yml workflow (manual dispatch).
+#   Workflow builds FFI for all platforms and creates PR with prebuilt libs.
+#   Merge the PR, then tag the merge commit.
 #
-# TypeScript bindings (v0.2.0+):
-#   Run N-API prebuilds workflow after tagging.
-#   Run npm publish workflow after signing.
+# TypeScript bindings:
+#   After tagging and signing, run typescript-napi-prebuilds.yml on the tag.
+#   Then run typescript-npm-publish.yml with OIDC trusted publishing.
 
 DIST_RELEASE := dist/release
 IPCPRIMS_RELEASE_TAG ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))

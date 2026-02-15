@@ -2,9 +2,17 @@
   "name": "@3leaps/ipcprims-linux-x64-musl",
   "version": "0.1.1",
   "main": "ipcprims.linux-x64-musl.node",
-  "files": ["ipcprims.linux-x64-musl.node"],
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "libc": ["musl"],
+  "files": [
+    "ipcprims.linux-x64-musl.node"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "musl"
+  ],
   "license": "MIT OR Apache-2.0"
 }

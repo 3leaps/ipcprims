@@ -58,12 +58,21 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
   git push origin "v${VERSION}"
   ```
 
-### Bindings
+### Bindings (Pre-Tag)
 
-- [ ] Go bindings: Verify `go test ./...` passes in `bindings/go/ipcprims/`
+- [ ] **Go bindings prep** (MUST happen before tagging):
+  1. Run `go-bindings.yml` workflow via GitHub Actions (manual dispatch, input: version)
+  2. Workflow builds FFI for all platforms and creates PR with prebuilt libs
+  3. Review and merge the PR
+  4. Tag the **merge commit** (critical: release tag must include Go prebuilt libs)
 - [ ] Go submodule tag: `git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"`
-- [ ] TypeScript bindings: Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
-- [ ] TypeScript (future): Run N-API prebuilds + npm publish workflows after signing
+- [ ] Verify `go test ./...` passes in `bindings/go/ipcprims/`
+- [ ] Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
+
+### Bindings (Post-Signing)
+
+- [ ] **TypeScript N-API prebuilds**: Run `typescript-napi-prebuilds.yml` on the tagged commit
+- [ ] **TypeScript npm publish**: Run `typescript-npm-publish.yml` with OIDC trusted publishing
 
 ### CI Verification
 
@@ -200,15 +209,15 @@ git push origin main
 | `make release-preflight`         | **REQUIRED**: Verify pre-tag requirements (tree, checks, version, notes, sync) |
 | `make release-guard-tag-version` | Verify git tag matches VERSION file (runs automatically in `make release`)     |
 | `make release-check`             | Version consistency + package check                                            |
-| `make release-clean`       | Remove dist/release contents                                                   |
-| `make release-download`    | Download CI artifacts from GitHub                                              |
-| `make release-checksums`   | Generate SHA256SUMS and SHA512SUMS                                             |
-| `make release-sign`        | Sign checksums with minisign + PGP                                             |
-| `make release-export-keys` | Export public signing keys                                                     |
-| `make release-verify`      | Verify checksums, signatures, and keys                                         |
-| `make release-notes`       | Copy release notes to dist                                                     |
-| `make release-upload`      | Upload signed artifacts to GitHub                                              |
-| `make release`             | Full workflow (clean -> upload)                                                |
+| `make release-clean`             | Remove dist/release contents                                                   |
+| `make release-download`          | Download CI artifacts from GitHub                                              |
+| `make release-checksums`         | Generate SHA256SUMS and SHA512SUMS                                             |
+| `make release-sign`              | Sign checksums with minisign + PGP                                             |
+| `make release-export-keys`       | Export public signing keys                                                     |
+| `make release-verify`            | Verify checksums, signatures, and keys                                         |
+| `make release-notes`             | Copy release notes to dist                                                     |
+| `make release-upload`            | Upload signed artifacts to GitHub                                              |
+| `make release`                   | Full workflow (clean -> upload)                                                |
 
 ## Troubleshooting
 

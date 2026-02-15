@@ -2,9 +2,17 @@
   "name": "@3leaps/ipcprims-linux-arm64-gnu",
   "version": "0.1.1",
   "main": "ipcprims.linux-arm64-gnu.node",
-  "files": ["ipcprims.linux-arm64-gnu.node"],
-  "os": ["linux"],
-  "cpu": ["arm64"],
-  "libc": ["glibc"],
+  "files": [
+    "ipcprims.linux-arm64-gnu.node"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "glibc"
+  ],
   "license": "MIT OR Apache-2.0"
 }
