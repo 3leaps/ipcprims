@@ -42,11 +42,8 @@ jobs:
       # reqwest → rustls) requires MSVC lib.exe for its build script.
       # Unlike sysprims, cross-check from Linux doesn't work here.
       #
-      # Excludes transport-dependent crates: IpcStreamInner has no Windows
-      # variant yet (named pipes planned for v0.2.0). Validates frame + schema
-      # portability. See .plans/active/v0.2.0/windows-transport-cfg-gating.md
       - name: cargo check
-        run: cargo check -p ipcprims-frame -p ipcprims-schema --target ${{ matrix.target }}
+        run: cargo check --workspace --exclude ipcprims-napi --target ${{ matrix.target }}
   test:
     name: Test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

@@ -14,7 +14,10 @@ pub struct IpcStream {
 enum IpcStreamInner {
     #[cfg(unix)]
     Unix(std::os::unix::net::UnixStream),
-    // Windows named pipe variant will be added later
+    // Placeholder so the enum is non-empty on Windows and match blocks compile.
+    // Cannot be constructed — replaced by a real NamedPipe variant in v0.2.0.
+    #[cfg(not(unix))]
+    Unavailable,
 }
 
 impl Read for IpcStream {
@@ -22,6 +25,8 @@ impl Read for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.read(buf),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 }
@@ -31,6 +36,8 @@ impl Write for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.write(buf),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 
@@ -38,6 +45,8 @@ impl Write for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.flush(),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 }
@@ -56,6 +65,8 @@ impl IpcStream {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.set_read_timeout(timeout).map_err(Into::into),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 
@@ -64,6 +75,8 @@ impl IpcStream {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.set_write_timeout(timeout).map_err(Into::into),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 
@@ -75,6 +88,8 @@ impl IpcStream {
                 let cloned = stream.try_clone()?;
                 Ok(Self::from_unix(cloned))
             }
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 
@@ -129,6 +144,8 @@ impl std::fmt::Debug for IpcStream {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(_) => f.debug_struct("IpcStream").field("type", &"unix").finish(),
+            #[cfg(not(unix))]
+            IpcStreamInner::Unavailable => unreachable!(),
         }
     }
 }
