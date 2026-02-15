@@ -11,6 +11,7 @@ pub struct IpcStream {
     inner: IpcStreamInner,
 }
 
+#[cfg_attr(not(unix), allow(dead_code))]
 enum IpcStreamInner {
     #[cfg(unix)]
     Unix(std::os::unix::net::UnixStream),
@@ -20,6 +21,7 @@ enum IpcStreamInner {
     Unavailable,
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 impl Read for IpcStream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match &mut self.inner {
@@ -31,6 +33,7 @@ impl Read for IpcStream {
     }
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 impl Write for IpcStream {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match &mut self.inner {
@@ -51,6 +54,7 @@ impl Write for IpcStream {
     }
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 impl IpcStream {
     /// Create an IpcStream from a Unix domain socket stream.
     #[cfg(unix)]
@@ -139,6 +143,7 @@ impl IpcStream {
     }
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 impl std::fmt::Debug for IpcStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.inner {
