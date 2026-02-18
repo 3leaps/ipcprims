@@ -1,2 +1,1 @@
-*
-!.gitignore
+# Allow CI-generated header to be tracked
