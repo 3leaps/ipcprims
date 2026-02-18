@@ -2,6 +2,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+permissions:
+  contents: read
+  actions: write
 env:
   CARGO_TERM_COLOR: always
   MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -649,6 +652,7 @@ jobs:
       - publish-check
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - name: Download all CLI artifacts

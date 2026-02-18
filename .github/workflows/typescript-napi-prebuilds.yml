@@ -1,6 +1,9 @@
 name: TypeScript N-API Prebuilds
 on:
   workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
 env:
   CARGO_TERM_COLOR: always
 jobs:
