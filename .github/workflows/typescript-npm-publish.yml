@@ -197,33 +197,35 @@ jobs:
           echo "All platform packages verified"
       - name: Publish (dry run)
         if: ${{ inputs.dry_run }}
-        working-directory: bindings/typescript
         run: |
           set -euo pipefail
           echo "=== DRY RUN - No packages will be published ==="
-
-          # Force OIDC mode: do not allow token auth to interfere.
           unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
-          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
 
           echo "Platform packages:"
-          for dir in ../../npm-packages/*/; do
+          for dir in npm-packages/*/; do
             (cd "$dir" && npm publish --access public --dry-run)
           done
 
           echo "Root package:"
-          npm publish --access public --dry-run
+          (cd bindings/typescript && npm publish --access public --dry-run)
+      - name: Validate release is not drafted
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DRAFT=$(gh release view "${{ env.tag }}" --json isDraft --jq '.isDraft')
+          if [ "$DRAFT" = "true" ]; then
+            echo "::error::Release ${{ env.tag }} is still in draft. Complete signing and undraft first."
+            exit 1
+          fi
+          echo "Release ${{ env.tag }} is published and ready for npm"
       - name: Publish platform packages
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
-
-          # Force OIDC mode: do not allow token auth to interfere.
           unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
-          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
-
           echo "Publishing platform packages..."
           for dir in npm-packages/*/; do
             pkg=$(basename "$dir")
@@ -236,8 +238,6 @@ jobs:
         run: |
           set -euo pipefail
           unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
-          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
           echo "Publishing @3leaps/ipcprims..."
           npm publish --access public
       - name: Verify publication
