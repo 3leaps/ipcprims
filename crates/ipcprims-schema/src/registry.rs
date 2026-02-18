@@ -115,7 +115,7 @@ impl SchemaRegistry {
                 .metadata()
                 .map_err(|err| SchemaError::LoadFailed(err.to_string()))?;
 
-            #[cfg(any(unix, windows))]
+            #[cfg(unix)]
             {
                 if !same_file_identity(&path_metadata, &opened_metadata) {
                     return Err(SchemaError::LoadFailed(format!(
@@ -331,25 +331,9 @@ fn same_file_identity(
     path_metadata.dev() == opened_metadata.dev() && path_metadata.ino() == opened_metadata.ino()
 }
 
-#[cfg(windows)]
-fn same_file_identity(
-    path_metadata: &std::fs::Metadata,
-    opened_metadata: &std::fs::Metadata,
-) -> bool {
-    use std::os::windows::fs::MetadataExt;
-
-    match (
-        path_metadata.volume_serial_number(),
-        opened_metadata.volume_serial_number(),
-        path_metadata.file_index(),
-        opened_metadata.file_index(),
-    ) {
-        (Some(path_volume), Some(opened_volume), Some(path_index), Some(opened_index)) => {
-            path_volume == opened_volume && path_index == opened_index
-        }
-        _ => false,
-    }
-}
+// Windows file identity check deferred to v0.2.0 — volume_serial_number()/file_index()
+// require nightly (windows_by_handle). Stable implementation via GetFileInformationByHandle
+// will land with named pipe transport.
 
 #[cfg(test)]
 mod tests {
@@ -674,7 +658,7 @@ mod tests {
         assert_eq!(parse_channel_pattern("channel_x.schema.json"), None);
     }
 
-    #[cfg(any(unix, windows))]
+    #[cfg(unix)]
     #[test]
     fn same_file_identity_distinguishes_replaced_file() {
         let dir = make_temp_schema_dir("identity-check");
