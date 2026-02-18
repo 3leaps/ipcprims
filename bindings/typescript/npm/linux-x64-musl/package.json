@@ -1,6 +1,6 @@
 {
   "name": "@3leaps/ipcprims-linux-x64-musl",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "ipcprims.linux-x64-musl.node",
   "files": [
     "ipcprims.linux-x64-musl.node"

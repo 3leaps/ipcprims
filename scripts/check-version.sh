@@ -139,5 +139,53 @@ if [[ ${#FAILED_CRATES[@]} -gt 0 ]]; then
 fi
 
 ok "All crates use workspace version"
+
+# Check TypeScript package.json versions
+info "Checking TypeScript package.json files..."
+
+TS_ROOT="$PROJECT_ROOT/bindings/typescript"
+TS_FAILED=()
+
+if [[ -f "$TS_ROOT/package.json" ]]; then
+	TS_VERSION=$(grep '"version"' "$TS_ROOT/package.json" | head -1 | sed 's/.*"\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/')
+	if [[ "$TS_VERSION" == "$VERSION_FROM_FILE" ]]; then
+		ok "  typescript/package.json: $TS_VERSION"
+	else
+		error "  typescript/package.json: $TS_VERSION (expected $VERSION_FROM_FILE)"
+		TS_FAILED+=("bindings/typescript/package.json")
+	fi
+
+	# Check optionalDependencies versions
+	while IFS= read -r line; do
+		dep_ver=$(echo "$line" | sed 's/.*": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/')
+		dep_name=$(echo "$line" | sed 's/.*"\(@3leaps\/[^"]*\)".*/\1/')
+		if [[ "$dep_ver" != "$VERSION_FROM_FILE" ]]; then
+			error "  optionalDependency $dep_name: $dep_ver (expected $VERSION_FROM_FILE)"
+			TS_FAILED+=("$dep_name")
+		fi
+	done < <(grep '@3leaps/ipcprims-' "$TS_ROOT/package.json")
+
+	# Check npm platform packages
+	for pkg in "$TS_ROOT"/npm/*/package.json; do
+		if [[ -f "$pkg" ]]; then
+			pkg_name=$(basename "$(dirname "$pkg")")
+			pkg_ver=$(grep '"version"' "$pkg" | head -1 | sed 's/.*"\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/')
+			if [[ "$pkg_ver" == "$VERSION_FROM_FILE" ]]; then
+				ok "  npm/$pkg_name/package.json: $pkg_ver"
+			else
+				error "  npm/$pkg_name/package.json: $pkg_ver (expected $VERSION_FROM_FILE)"
+				TS_FAILED+=("npm/$pkg_name")
+			fi
+		fi
+	done
+fi
+
+if [[ ${#TS_FAILED[@]} -gt 0 ]]; then
+	error ""
+	error "TypeScript version mismatches found. Run 'make version-sync' to fix."
+	exit 1
+fi
+
+ok "All TypeScript packages match version"
 echo ""
 ok "✓ Version consistency check passed"

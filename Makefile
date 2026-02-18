@@ -99,7 +99,7 @@ help: ## Show available targets
 	@echo "  version-minor   Bump minor version (0.1.0 -> 0.2.0)"
 	@echo "  version-major   Bump major version (0.1.0 -> 1.0.0)"
 	@echo "  version-set     Set explicit version (V=X.Y.Z)"
-	@echo "  version-sync    Sync VERSION to Cargo.toml"
+	@echo "  version-sync    Sync VERSION to Cargo.toml and package.json"
 	@echo ""
 	@echo "Current version: $(VERSION)"
 
@@ -380,7 +380,7 @@ version-set: ## Set explicit version (V=X.Y.Z)
 	@echo "$(V)" > $(VERSION_FILE)
 	@echo "Version set to $(V)"
 
-version-sync: ## Sync VERSION file to Cargo.toml
+version-sync: ## Sync VERSION file to Cargo.toml and package.json
 	@ver=$$(cat $(VERSION_FILE)); \
 	if command -v cargo-set-version >/dev/null 2>&1; then \
 		cargo set-version --workspace "$$ver"; \
@@ -388,6 +388,21 @@ version-sync: ## Sync VERSION file to Cargo.toml
 	else \
 		echo "[!!] cargo-edit not installed (cargo install cargo-edit)"; \
 		echo "Manual update required: set version = \"$$ver\" in Cargo.toml"; \
+	fi
+	@ver=$$(cat $(VERSION_FILE)); \
+	ts_root="bindings/typescript"; \
+	if [ -f "$$ts_root/package.json" ]; then \
+		sed -i.bak 's/"version": "[^"]*"/"version": "'"$$ver"'"/' "$$ts_root/package.json"; \
+		sed -i.bak 's/\("@3leaps\/ipcprims-[^"]*": \)"[^"]*"/\1"'"$$ver"'"/' "$$ts_root/package.json"; \
+		rm -f "$$ts_root/package.json.bak"; \
+		echo "[ok] Synced $$ts_root/package.json to $$ver"; \
+		for pkg in "$$ts_root"/npm/*/package.json; do \
+			if [ -f "$$pkg" ]; then \
+				sed -i.bak 's/"version": "[^"]*"/"version": "'"$$ver"'"/' "$$pkg"; \
+				rm -f "$$pkg.bak"; \
+			fi; \
+		done; \
+		echo "[ok] Synced $$ts_root/npm/*/package.json to $$ver"; \
 	fi
 
 version-check: ## Validate version consistency across files

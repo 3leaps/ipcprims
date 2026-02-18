@@ -1,6 +1,6 @@
 {
   "name": "@3leaps/ipcprims-win32-x64-msvc",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "ipcprims.win32-x64-msvc.node",
   "files": [
     "ipcprims.win32-x64-msvc.node"
