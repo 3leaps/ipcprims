@@ -359,6 +359,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bind_rejects_existing_directory() {
+        let dir =
+            std::env::temp_dir().join(format!("ipcprims-async-bind-dir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock_path = dir.join("dir-at-socket-path.sock");
+        std::fs::create_dir_all(&sock_path).unwrap();
+
+        let result = AsyncUnixDomainSocket::bind(&sock_path);
+        assert!(matches!(result, Err(TransportError::Bind { .. })));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn drop_does_not_remove_replaced_path() {
         let dir =
             std::env::temp_dir().join(format!("ipcprims-async-drop-race-{}", std::process::id()));
