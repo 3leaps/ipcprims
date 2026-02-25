@@ -18,3 +18,8 @@ pub use traits::IpcStream;
 
 #[cfg(unix)]
 pub use uds::UnixDomainSocket;
+
+#[cfg(all(unix, feature = "async"))]
+pub mod async_uds;
+#[cfg(all(unix, feature = "async"))]
+pub use async_uds::{AsyncIpcStream, AsyncUnixDomainSocket};

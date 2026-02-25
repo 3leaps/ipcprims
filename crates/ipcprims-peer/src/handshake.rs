@@ -3,10 +3,15 @@ use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
+#[cfg(all(unix, feature = "async"))]
+use bytes::BytesMut;
 use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{PeerError, Result};
+
+#[cfg(all(unix, feature = "async"))]
+use ipcprims_frame::HEADER_SIZE;
 
 const MAX_HANDSHAKE_CHANNELS: usize = 256;
 const MAX_PROTOCOL_LEN: usize = 32;
@@ -318,6 +323,23 @@ fn send_control_json<T: Serialize, W: Write>(writer: &mut FrameWriter<W>, value:
     Ok(())
 }
 
+#[cfg(all(unix, feature = "async"))]
+async fn send_control_json_async<W: tokio::io::AsyncWrite + Unpin>(
+    writer: &mut W,
+    value: &impl Serialize,
+) -> Result<()> {
+    let payload = serde_json::to_vec(value)?;
+    let mut buf = BytesMut::new();
+    ipcprims_frame::encode_frame(CONTROL, &payload, &mut buf).map_err(PeerError::Frame)?;
+    tokio::io::AsyncWriteExt::write_all(writer, &buf)
+        .await
+        .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
+    tokio::io::AsyncWriteExt::flush(writer)
+        .await
+        .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
+    Ok(())
+}
+
 fn recv_control_payload<R: Read>(
     reader: &mut FrameReader<R>,
     deadline: Instant,
@@ -359,6 +381,232 @@ fn recv_control_payload<R: Read>(
             Err(err) => return Err(PeerError::Frame(err)),
         }
     }
+}
+
+#[cfg(all(unix, feature = "async"))]
+async fn recv_control_payload_async<R: tokio::io::AsyncRead + Unpin>(
+    reader: &mut R,
+    deadline: Instant,
+    timeout: Duration,
+    max_handshake_payload: usize,
+) -> Result<Vec<u8>> {
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(PeerError::Timeout(timeout));
+    }
+
+    // Read exactly one frame (header then payload), without over-reading. This prevents
+    // losing post-handshake bytes if the peer pipelines frames in a single write.
+    let mut header = [0u8; HEADER_SIZE];
+    let remaining = deadline - now;
+    tokio::time::timeout(
+        remaining,
+        tokio::io::AsyncReadExt::read_exact(reader, &mut header),
+    )
+    .await
+    .map_err(|_| PeerError::Timeout(timeout))?
+    .map_err(|e| {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            PeerError::Disconnected("connection closed during handshake".to_string())
+        } else {
+            PeerError::Frame(FrameError::Io(e))
+        }
+    })?;
+
+    if header[0..2] != [0x49, 0x50] {
+        return Err(PeerError::Frame(FrameError::InvalidMagic));
+    }
+
+    let payload_len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
+    let channel = u16::from_le_bytes(header[6..8].try_into().unwrap());
+
+    if channel != CONTROL {
+        return Err(PeerError::HandshakeFailed(format!(
+            "expected CONTROL channel {}, got {}",
+            CONTROL, channel
+        )));
+    }
+
+    if payload_len > max_handshake_payload {
+        return Err(PeerError::HandshakeFailed(format!(
+            "handshake payload too large: {} (max {})",
+            payload_len, max_handshake_payload
+        )));
+    }
+
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(PeerError::Timeout(timeout));
+    }
+    let remaining = deadline - now;
+
+    let mut payload = vec![0u8; payload_len];
+    tokio::time::timeout(
+        remaining,
+        tokio::io::AsyncReadExt::read_exact(reader, &mut payload),
+    )
+    .await
+    .map_err(|_| PeerError::Timeout(timeout))?
+    .map_err(|e| {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            PeerError::Disconnected("connection closed during handshake".to_string())
+        } else {
+            PeerError::Frame(FrameError::Io(e))
+        }
+    })?;
+
+    Ok(payload)
+}
+
+/// Perform client-side handshake (async) using explicit configuration.
+#[cfg(all(unix, feature = "async"))]
+pub async fn async_handshake_client_with_config<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    requested_channels: &[u16],
+    config: &HandshakeConfig,
+) -> Result<HandshakeResult>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    validate_protocol_name(&config.protocol_name)?;
+    validate_version(&config.protocol_version)?;
+    validate_auth_token(config.auth_token.as_deref())?;
+
+    let requested = normalize_channels(requested_channels)?;
+    let req = HandshakeRequest {
+        protocol: config.protocol_name.clone(),
+        version: config.protocol_version.clone(),
+        channels: requested.clone(),
+        auth_token: config.auth_token.clone(),
+    };
+
+    send_control_json_async(writer, &req).await?;
+
+    let deadline = Instant::now() + config.timeout;
+    let payload = recv_control_payload_async(
+        reader,
+        deadline,
+        config.timeout,
+        config.max_handshake_payload,
+    )
+    .await?;
+    let resp: HandshakeResponse = serde_json::from_slice(&payload)?;
+
+    validate_protocol_name(&resp.protocol)?;
+    validate_version(&resp.version)?;
+    validate_peer_id(&resp.peer_id)?;
+
+    if resp.protocol != config.protocol_name {
+        return Err(PeerError::HandshakeFailed(format!(
+            "unknown protocol '{}' (expected '{}')",
+            resp.protocol, config.protocol_name
+        )));
+    }
+
+    if !is_version_compatible(&config.protocol_version, &resp.version)? {
+        return Err(PeerError::HandshakeFailed(format!(
+            "incompatible version '{}' (local '{}')",
+            resp.version, config.protocol_version
+        )));
+    }
+
+    let negotiated = normalize_channels(&resp.channels)?;
+    let requested_set: HashSet<u16> = requested.iter().copied().collect();
+    if negotiated
+        .iter()
+        .any(|channel| !requested_set.contains(channel))
+    {
+        return Err(PeerError::HandshakeFailed(
+            "server returned channels not requested by client".to_string(),
+        ));
+    }
+
+    if config.require_channel_overlap && negotiated.is_empty() {
+        return Err(PeerError::HandshakeFailed(
+            "no overlapping channels".to_string(),
+        ));
+    }
+
+    Ok(HandshakeResult {
+        peer_id: resp.peer_id,
+        protocol_version: resp.version,
+        negotiated_channels: negotiated,
+        client_auth_token: None,
+    })
+}
+
+/// Perform server-side handshake (async) using explicit configuration.
+#[cfg(all(unix, feature = "async"))]
+pub async fn async_handshake_server_with_config<R, W>(
+    reader: &mut R,
+    writer: &mut W,
+    supported_channels: &[u16],
+    peer_id: &str,
+    config: &HandshakeConfig,
+) -> Result<HandshakeResult>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    validate_protocol_name(&config.protocol_name)?;
+    validate_version(&config.protocol_version)?;
+    validate_peer_id(peer_id)?;
+
+    let supported = normalize_channels(supported_channels)?;
+
+    let deadline = Instant::now() + config.timeout;
+    let payload = recv_control_payload_async(
+        reader,
+        deadline,
+        config.timeout,
+        config.max_handshake_payload,
+    )
+    .await?;
+    let req: HandshakeRequest = serde_json::from_slice(&payload)?;
+
+    validate_protocol_name(&req.protocol)?;
+    validate_version(&req.version)?;
+    validate_auth_token(req.auth_token.as_deref())?;
+
+    if req.protocol != config.protocol_name {
+        return Err(PeerError::HandshakeFailed(format!(
+            "unknown protocol '{}' (expected '{}')",
+            req.protocol, config.protocol_name
+        )));
+    }
+
+    if !is_version_compatible(&req.version, &config.protocol_version)? {
+        return Err(PeerError::HandshakeFailed(format!(
+            "incompatible version '{}' (server '{}')",
+            req.version, config.protocol_version
+        )));
+    }
+
+    let requested = normalize_channels(&req.channels)?;
+    let negotiated = intersect_channels(&requested, &supported);
+
+    if config.require_channel_overlap && negotiated.is_empty() {
+        return Err(PeerError::HandshakeFailed(
+            "no overlapping channels".to_string(),
+        ));
+    }
+
+    let resp = HandshakeResponse {
+        protocol: config.protocol_name.clone(),
+        version: config.protocol_version.clone(),
+        channels: negotiated.clone(),
+        peer_id: peer_id.to_string(),
+    };
+    send_control_json_async(writer, &resp).await?;
+
+    Ok(HandshakeResult {
+        peer_id: peer_id.to_string(),
+        protocol_version: config.protocol_version.clone(),
+        negotiated_channels: negotiated,
+        client_auth_token: req.auth_token,
+    })
 }
 
 fn normalize_channels(channels: &[u16]) -> Result<Vec<u16>> {

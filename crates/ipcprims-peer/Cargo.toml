@@ -11,6 +11,7 @@ description = "High-level peer connection management for IPC"
 [dependencies]
 ipcprims-transport.workspace = true
 ipcprims-frame.workspace = true
+bytes.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -19,12 +20,21 @@ tracing.workspace = true
 [features]
 default = []
 schema = ["dep:ipcprims-schema"]
-async = ["ipcprims-transport/async", "ipcprims-frame/async", "dep:tokio"]
+async = [
+    "ipcprims-transport/async",
+    "ipcprims-frame/async",
+    "dep:tokio",
+    "dep:futures-core",
+]
 
 [dependencies.ipcprims-schema]
 workspace = true
 optional = true
 
 [dependencies.tokio]
+workspace = true
+optional = true
+
+[dependencies.futures-core]
 workspace = true
 optional = true

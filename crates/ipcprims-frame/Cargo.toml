@@ -16,8 +16,15 @@ tracing.workspace = true
 
 [features]
 default = []
-async = ["ipcprims-transport/async", "dep:tokio"]
+async = ["ipcprims-transport/async", "dep:tokio", "dep:tokio-util"]
 
 [dependencies.tokio]
 workspace = true
 optional = true
+
+[dependencies.tokio-util]
+workspace = true
+optional = true
+
+[dev-dependencies]
+futures-util = "0.3"

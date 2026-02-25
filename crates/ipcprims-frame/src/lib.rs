@@ -7,12 +7,16 @@
 //!
 //! No partial reads, no buffer management in user code.
 
+#[cfg(feature = "async")]
+pub mod async_codec;
 pub mod channel;
 pub mod codec;
 pub mod error;
 pub mod reader;
 pub mod writer;
 
+#[cfg(feature = "async")]
+pub use async_codec::IpcCodec;
 pub use channel::{COMMAND, CONTROL, DATA, ERROR, TELEMETRY, USER_CHANNEL_START};
 pub use codec::{decode_frame, encode_frame, Frame, FrameConfig, DEFAULT_MAX_PAYLOAD, HEADER_SIZE};
 pub use error::{FrameError, Result};

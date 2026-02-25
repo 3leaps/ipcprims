@@ -40,6 +40,12 @@ pub struct PeerConfig {
     pub allow_shutdown_force: bool,
     /// Whether unknown CONTROL message types are passed through instead of rejected.
     pub allow_unknown_control_messages: bool,
+
+    /// Async-only: whether the arrival-ordered `any_rx` delivery path starts enabled.
+    ///
+    /// If `false`, async peers will construct with `any_rx` disabled (closed) before the reader
+    /// task starts, eliminating the "channel-only consumer" buffer-pressure race.
+    pub enable_any_delivery: bool,
 }
 
 impl Default for PeerConfig {
@@ -51,6 +57,7 @@ impl Default for PeerConfig {
             max_control_frames_per_loop: 256,
             allow_shutdown_force: false,
             allow_unknown_control_messages: false,
+            enable_any_delivery: true,
         }
     }
 }
@@ -626,6 +633,7 @@ mod tests {
             max_control_frames_per_loop: 256,
             allow_shutdown_force: false,
             allow_unknown_control_messages: false,
+            enable_any_delivery: true,
         };
         let (mut a, mut b) = peer_pair(config);
 
@@ -700,6 +708,7 @@ mod tests {
             max_control_frames_per_loop: 256,
             allow_shutdown_force: false,
             allow_unknown_control_messages: false,
+            enable_any_delivery: true,
         };
         let (left, right) = peer_pair(config);
 
@@ -822,6 +831,7 @@ mod tests {
             max_control_frames_per_loop: 256,
             allow_shutdown_force: false,
             allow_unknown_control_messages: false,
+            enable_any_delivery: true,
         };
         let (mut left, mut right) = peer_pair(config);
 
