@@ -84,6 +84,9 @@ Role: <role>
 Committer-of-Record: <Full Name> <email> [@<github-handle>]
 ```
 
+Optional helper: use `git commit -t scripts/commit-template-ai.txt` to start from a repo-local
+template with the correct trailer format.
+
 **Example:**
 
 ```
