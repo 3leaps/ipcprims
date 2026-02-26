@@ -9,6 +9,7 @@
 #   make build      - Build all crates
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
+.PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
 .PHONY: precommit prepush deny audit
 .PHONY: build-release
@@ -77,6 +78,7 @@ help: ## Show available targets
 	@echo "  prepush         Pre-push checks (thorough: fmt, clippy, test, deny)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
+	@echo "  check-windows   Run Windows target cargo checks (no link)"
 	@echo ""
 	@echo "Release:"
 	@echo "  release-preflight  Verify all pre-tag requirements (REQUIRED before tagging)"
@@ -221,6 +223,28 @@ lint: ## Run linting (cargo clippy + goneat lint)
 		echo "[!!] goneat not found — skipping non-Rust linting (run 'make bootstrap')"; \
 	fi
 	@echo "[ok] Linting passed"
+
+# -----------------------------------------------------------------------------
+# Windows Target Checks (Local)
+# -----------------------------------------------------------------------------
+
+check-windows: check-windows-msvc check-windows-gnu check-windows-arm64-msvc ## Run Windows target cargo checks (no link)
+	@echo "[ok] Windows target checks passed"
+
+check-windows-msvc: ## cargo check for x86_64-pc-windows-msvc (no link)
+	@rustup target add x86_64-pc-windows-msvc >/dev/null
+	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-msvc
+	@echo "[ok] Windows MSVC target check passed"
+
+check-windows-gnu: ## cargo check for x86_64-pc-windows-gnu (no link)
+	@rustup target add x86_64-pc-windows-gnu >/dev/null
+	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-gnu
+	@echo "[ok] Windows GNU target check passed"
+
+check-windows-arm64-msvc: ## cargo check for aarch64-pc-windows-msvc (no link)
+	@rustup target add aarch64-pc-windows-msvc >/dev/null
+	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target aarch64-pc-windows-msvc
+	@echo "[ok] Windows ARM64 MSVC target check passed"
 
 deny: ## Run cargo-deny license and advisory checks
 	@echo "Running cargo-deny..."
