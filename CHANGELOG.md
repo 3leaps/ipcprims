@@ -13,7 +13,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **Async (Tokio, Unix-only)**: `ipcprims-transport` async UDS transport (`AsyncUnixDomainSocket`, `AsyncIpcStream`), `ipcprims-frame` async codec (`IpcCodec` for `tokio_util::codec::Framed*`), and `ipcprims-peer` async peer API (`AsyncPeer` with split Tx/Rx). (feature: `async`)
+- **Async test hardening**: `tokio_util::codec::Framed` integration test for `IpcCodec`, oversize-length rejection regression test, and async UDS hardening parity tests.
+- **Dev tooling**: `scripts/commit-template-ai.txt` helper for correct AI-assisted commit trailers.
+- **Makefile**: `check-windows*` targets for local Windows target `cargo check` (no link) of core crates.
+
+### Changed
+
+- **PeerConfig**: added `enable_any_delivery` (async-only; defaults to enabled) to allow construction-time disabling of the arrival-ordered `any_rx` queue for channel-only consumers.
 
 ## [0.1.2] — 2026-02-15
 
