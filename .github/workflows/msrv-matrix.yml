@@ -1,0 +1,44 @@
+name: MSRV Matrix
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+jobs:
+  msrv:
+    name: MSRV (${{ matrix.os }}, rust 1.85.0)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.85.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+      # Keep MSRV focused: exercise async+schema on core crates but do not enable `ipcprims`' `cli`
+      # feature (it pulls `comfy-table`, which currently requires a newer toolchain).
+      - name: Build (MSRV, core crates)
+        run: |
+          cargo build -p ipcprims-transport --features async --all-targets
+          cargo build -p ipcprims-frame --features async --all-targets
+          cargo build -p ipcprims-schema --all-targets
+          cargo build -p ipcprims-peer --features async,schema --all-targets
+          cargo build -p ipcprims-ffi --all-targets
+          cargo build -p ipcprims --no-default-features --features peer,schema,async --all-targets
+      - name: Test (MSRV, core crates)
+        run: |
+          cargo test -p ipcprims-transport --features async --all-targets
+          cargo test -p ipcprims-frame --features async --all-targets
+          cargo test -p ipcprims-schema --all-targets
+          cargo test -p ipcprims-peer --features async,schema --all-targets
+          cargo test -p ipcprims-ffi --all-targets
+          cargo test -p ipcprims --no-default-features --features peer,schema,async --all-targets

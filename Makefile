@@ -229,8 +229,18 @@ lint: ## Run linting (cargo clippy + goneat lint)
 msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
 	@echo "Checking MSRV (core crates at 1.85, ipcprims-napi requires 1.88)..."
 	@if rustup run 1.85.0 cargo --version >/dev/null 2>&1; then \
-		rustup run 1.85.0 cargo build --workspace --exclude ipcprims-napi && \
-		rustup run 1.85.0 cargo test --workspace --exclude ipcprims-napi; \
+		rustup run 1.85.0 cargo build -p ipcprims-transport --features async --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims-transport --features async --all-targets && \
+		rustup run 1.85.0 cargo build -p ipcprims-frame --features async --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims-frame --features async --all-targets && \
+		rustup run 1.85.0 cargo build -p ipcprims-schema --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims-schema --all-targets && \
+		rustup run 1.85.0 cargo build -p ipcprims-peer --features async,schema --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims-peer --features async,schema --all-targets && \
+		rustup run 1.85.0 cargo build -p ipcprims-ffi --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims-ffi --all-targets && \
+		rustup run 1.85.0 cargo build -p ipcprims --no-default-features --features peer,schema,async --all-targets && \
+		rustup run 1.85.0 cargo test -p ipcprims --no-default-features --features peer,schema,async --all-targets; \
 	else \
 		echo "[!!] Rust 1.85.0 toolchain not installed. Install with:"; \
 		echo "  rustup toolchain install 1.85.0"; \

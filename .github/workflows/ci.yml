@@ -32,7 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust 1.85.0
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
       - name: MSRV build + test
         run: make msrv
   windows-cross-check:
