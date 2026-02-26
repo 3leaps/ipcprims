@@ -13,6 +13,8 @@ ipcprims-transport.workspace = true
 ipcprims-frame.workspace = true
 ipcprims-schema = { workspace = true, optional = true }
 ipcprims-peer = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 comfy-table = { workspace = true, optional = true }
 ctrlc = { version = "3.4", optional = true }
@@ -25,7 +27,13 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "json"], optional = t
 default = ["peer"]
 peer = ["dep:ipcprims-peer"]
 schema = ["dep:ipcprims-schema", "ipcprims-peer?/schema"]
-async = ["ipcprims-transport/async", "ipcprims-frame/async", "ipcprims-peer?/async"]
+async = [
+    "ipcprims-transport/async",
+    "ipcprims-frame/async",
+    "ipcprims-peer?/async",
+    "dep:tokio",
+    "dep:tokio-util",
+]
 cli = ["dep:clap", "dep:comfy-table", "dep:ctrlc", "dep:serde", "dep:serde_json", "dep:tracing", "dep:tracing-subscriber", "peer", "schema"]
 
 [[bin]]
@@ -39,3 +47,11 @@ required-features = ["peer"]
 [[example]]
 name = "multi-channel"
 required-features = ["peer"]
+
+[[example]]
+name = "async-echo-server"
+required-features = ["peer", "async"]
+
+[[example]]
+name = "async-gateway"
+required-features = ["peer", "async"]

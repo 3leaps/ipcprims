@@ -26,7 +26,7 @@ You're building software where multiple processes need to communicate locally â€
 - **Schema-validated (opt-in)**: Validate messages against JSON Schema 2020-12 at the transport boundary. Catch contract violations before they become bugs.
 - **Multiplexed channels**: Separate command and data streams over a single transport. No need for multiple sockets per peer.
 - **Cross-platform**: Unix domain sockets on Linux/macOS, named pipes on Windows, with a unified API.
-- **Sync-first, async-planned**: Blocking sync API in v0.1.0. Tokio-native async API planned for v0.2.0 behind `async` feature flag.
+- **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix-only in v0.2.0; Windows async deferred to v0.2.1).
 - **Library-first**: Embed directly in Rust, Go, Python, or TypeScript. CLI is a diagnostic/demo tool.
 
 ### Framed-by-Default: The Core Difference
@@ -69,7 +69,7 @@ Optional: schema validation rejects malformed payloads at the boundary
 
 ```toml
 [dependencies]
-ipcprims = "0.1"
+ipcprims = "0.2"
 ```
 
 ```rust
@@ -89,6 +89,47 @@ let mut client = UnixDomainSocket::connect("/tmp/my-service.sock")?;
 let mut buf = BytesMut::new();
 encode_frame(COMMAND, b"{\"action\":\"ping\"}", &mut buf);
 client.write_all(&buf)?;
+```
+
+### Async (Tokio, Unix-only)
+
+```toml
+[dependencies]
+ipcprims = { version = "0.2", features = ["async"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-util = "0.7"
+```
+
+```rust
+use ipcprims::frame::COMMAND;
+use ipcprims::peer::{async_connect, AsyncPeerListener};
+use tokio_util::sync::CancellationToken;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cancel = CancellationToken::new();
+    let listener = AsyncPeerListener::bind("/tmp/ipcprims.sock")?
+        .with_cancellation_token(cancel.clone())
+        .with_channels(&[COMMAND]);
+
+    let server = tokio::spawn(async move {
+        let peer = listener.accept().await?;
+        let (tx, mut rx) = peer.into_split();
+        let mut any = rx.take_any_receiver();
+        while let Ok(frame) = any.recv().await {
+            tx.send(frame.channel, &frame.payload).await?;
+        }
+        Ok::<(), ipcprims::peer::PeerError>(())
+    });
+
+    let client = async_connect("/tmp/ipcprims.sock", &[COMMAND]).await?;
+    let (tx, _rx) = client.into_split();
+    tx.send(COMMAND, b\"hello\").await?;
+
+    cancel.cancel();
+    let _ = server.await;
+    Ok(())
+}
 ```
 
 ### As a CLI
