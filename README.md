@@ -5,7 +5,7 @@
 
 **Reliable inter-process communication with permissive licensing.**
 
-ipcprims provides permissively licensed, cross-platform IPC primitives — named pipes, Unix sockets, message framing, schema validation, and channel multiplexing — that can be statically or dynamically linked into your applications. When your services need structured, validated communication over local transports and you want a lightweight alternative to full RPC frameworks, ipcprims offers a focused solution.
+ipcprims provides permissively licensed, cross-platform IPC primitives — Unix sockets, message framing, schema validation, and channel multiplexing — that can be statically or dynamically linked into your applications. When your services need structured, validated communication over local transports and you want a lightweight alternative to full RPC frameworks, ipcprims offers a focused solution.
 
 **Lifecycle Phase**: `alpha` | See [RELEASE_NOTES.md](RELEASE_NOTES.md) for current version
 
@@ -25,7 +25,7 @@ You're building software where multiple processes need to communicate locally �
 - **Framed-by-default**: Every message is length-prefixed with type tags. No partial reads, no buffer management in user code.
 - **Schema-validated (opt-in)**: Validate messages against JSON Schema 2020-12 at the transport boundary. Catch contract violations before they become bugs.
 - **Multiplexed channels**: Separate command and data streams over a single transport. No need for multiple sockets per peer.
-- **Cross-platform**: Unix domain sockets on Linux/macOS, named pipes on Windows, with a unified API.
+- **Cross-platform**: Unix domain sockets on Linux/macOS today; Windows named pipes are planned for v0.2.1.
 - **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix-only in v0.2.0; Windows async deferred to v0.2.1).
 - **Library-first**: Embed directly in Rust, Go, Python, or TypeScript. CLI is a diagnostic/demo tool.
 
@@ -69,7 +69,7 @@ Optional: schema validation rejects malformed payloads at the boundary
 
 ```toml
 [dependencies]
-ipcprims = "0.2"
+ipcprims = "0.1"
 ```
 
 ```rust
@@ -95,7 +95,7 @@ client.write_all(&buf)?;
 
 ```toml
 [dependencies]
-ipcprims = { version = "0.2", features = ["async"] }
+ipcprims = { version = "0.2", features = ["async"] } # v0.2.0+
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-util = "0.7"
 ```
@@ -174,7 +174,7 @@ This exercises `echo`, `send`, `listen`, `info`, `doctor`, and `envinfo` with sc
 
 ### ipcprims-transport
 
-Cross-platform transport abstraction. Unix domain sockets on Linux/macOS, named pipes on Windows.
+Cross-platform transport abstraction. Unix domain sockets on Linux/macOS today; Windows named pipes are planned for v0.2.1.
 
 ### ipcprims-frame
 
@@ -225,14 +225,14 @@ TypeScript bindings scaffold is provided at `bindings/typescript` using Node-API
 
 ## Platform Support
 
-| Platform            | Target                       | Transport        | Status    |
-| ------------------- | ---------------------------- | ---------------- | --------- |
-| Linux x64 (glibc)   | `x86_64-unknown-linux-gnu`   | UDS (abstract)   | Primary   |
-| Linux x64 (musl)    | `x86_64-unknown-linux-musl`  | UDS (abstract)   | Primary   |
-| Linux arm64 (glibc) | `aarch64-unknown-linux-gnu`  | UDS (abstract)   | Primary   |
-| Linux arm64 (musl)  | `aarch64-unknown-linux-musl` | UDS (abstract)   | Primary   |
-| macOS arm64         | `aarch64-apple-darwin`       | UDS (filesystem) | Supported |
-| Windows x64         | `x86_64-pc-windows-msvc`     | Named pipes      | Supported |
+| Platform            | Target                       | Transport        | Status           |
+| ------------------- | ---------------------------- | ---------------- | ---------------- |
+| Linux x64 (glibc)   | `x86_64-unknown-linux-gnu`   | UDS (abstract)   | Primary          |
+| Linux x64 (musl)    | `x86_64-unknown-linux-musl`  | UDS (abstract)   | Primary          |
+| Linux arm64 (glibc) | `aarch64-unknown-linux-gnu`  | UDS (abstract)   | Primary          |
+| Linux arm64 (musl)  | `aarch64-unknown-linux-musl` | UDS (abstract)   | Primary          |
+| macOS arm64         | `aarch64-apple-darwin`       | UDS (filesystem) | Supported        |
+| Windows x64         | `x86_64-pc-windows-msvc`     | Named pipes      | Planned (v0.2.1) |
 
 ## Development
 
