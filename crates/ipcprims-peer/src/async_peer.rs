@@ -190,9 +190,10 @@ struct Shared {
 
     // Cancellation signal for the reader task.
     //
-    // This is used both for internal shutdown (drop of the last peer handle: Tx, Rx,
-    // AnyReceiver/ChannelReceiver) and for optional external structured cancellation
-    // (caller-provided token).
+    // This is used for local cancellation (via `AsyncPeer{,Rx}::cancel()`) and to ensure the
+    // reader task unblocks when the last peer handle is dropped (via `Shared::drop`).
+    //
+    // It can also be paired with an optional external structured cancellation token.
     cancel: CancellationToken,
 
     // Optional external structured cancellation token (brief D8).

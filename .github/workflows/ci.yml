@@ -26,6 +26,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+  msrv:
+    name: MSRV (core crates, rust 1.85.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust 1.85.0
+        uses: dtolnay/rust-toolchain@1.85.0
+      - name: MSRV build + test
+        run: make msrv
   windows-cross-check:
     name: Windows Check (${{ matrix.target }})
     runs-on: windows-latest
