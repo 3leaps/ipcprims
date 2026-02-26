@@ -28,8 +28,9 @@ mod unix {
             cancel_for_ctrlc.cancel();
         });
 
-        let sock_dir =
-            std::env::temp_dir().join(format!("ipcprims-async-gateway-{}", std::process::id()));
+        // macOS UDS paths have strict length limits; keep the path short by anchoring in /tmp.
+        let sock_dir = std::path::PathBuf::from("/tmp")
+            .join(format!("ipcprims-async-gateway-{}", std::process::id()));
         fs::create_dir_all(&sock_dir)?;
         let sock_path = sock_dir.join("gateway.sock");
         let _ = fs::remove_file(&sock_path);

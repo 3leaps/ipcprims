@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let client = async_connect("/tmp/ipcprims.sock", &[COMMAND]).await?;
     let (tx, _rx) = client.into_split();
-    tx.send(COMMAND, b\"hello\").await?;
+    tx.send(COMMAND, b"hello").await?;
 
     cancel.cancel();
     let _ = server.await;
