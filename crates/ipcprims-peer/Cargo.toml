@@ -25,6 +25,7 @@ async = [
     "ipcprims-frame/async",
     "dep:tokio",
     "dep:futures-core",
+    "dep:tokio-util",
 ]
 
 [dependencies.ipcprims-schema]
@@ -36,5 +37,9 @@ workspace = true
 optional = true
 
 [dependencies.futures-core]
+workspace = true
+optional = true
+
+[dependencies.tokio-util]
 workspace = true
 optional = true

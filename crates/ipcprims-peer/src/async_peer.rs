@@ -14,7 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -26,6 +26,7 @@ use ipcprims_frame::{
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot, watch, Semaphore};
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 use crate::control::{
@@ -86,6 +87,8 @@ fn closed_receiver<T>() -> mpsc::Receiver<T> {
 /// Tee semantics: if you also subscribe to a per-channel receiver, you will observe
 /// the same frames twice by design (once via each path).
 pub struct AnyReceiver {
+    // Keeps peer alive while this receiver is in use.
+    _shared: Arc<Shared>,
     rx: mpsc::Receiver<QueuedFrame>,
     disconnect: watch::Receiver<Option<PeerError>>,
     done: bool,
@@ -125,6 +128,8 @@ impl Stream for AnyReceiver {
 /// This receiver exists only if the consumer opted in via `AsyncPeerRx::take_channel_receiver`.
 /// On drop, it unsubscribes the channel fanout.
 pub struct ChannelReceiver {
+    // Keeps peer alive while this receiver is in use.
+    _shared: Arc<Shared>,
     channel: u16,
     rx: mpsc::Receiver<QueuedFrame>,
     disconnect: watch::Receiver<Option<PeerError>>,
@@ -182,6 +187,22 @@ struct Shared {
     config: PeerConfig,
     ping_waiter: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
     shutdown_waiter: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
+
+    // Cancellation signal for the reader task.
+    //
+    // This is used both for internal shutdown (drop of the last Rx handle) and for
+    // optional external structured cancellation (caller-provided token).
+    cancel: CancellationToken,
+
+    // Optional external structured cancellation token (brief D8).
+    external_cancel: Option<CancellationToken>,
+}
+
+impl Drop for Shared {
+    fn drop(&mut self) {
+        // Ensure the reader task unblocks even if it's waiting on a read.
+        self.cancel.cancel();
+    }
 }
 
 #[derive(Clone)]
@@ -345,10 +366,16 @@ impl AsyncPeerRx {
         }
     }
 
+    /// Cancel the background reader task (local cancellation).
+    pub fn cancel(&self) {
+        self.shared.cancel.cancel();
+    }
+
     /// Take ownership of the arrival-ordered receiver.
     pub fn take_any_receiver(&mut self) -> AnyReceiver {
         let rx = self.any_rx.take().unwrap_or_else(closed_receiver);
         AnyReceiver {
+            _shared: Arc::clone(&self.shared),
             rx,
             disconnect: self.disconnect.clone(),
             done: false,
@@ -385,6 +412,7 @@ impl AsyncPeerRx {
         drop(subs);
 
         Some(ChannelReceiver {
+            _shared: Arc::clone(&self.shared),
             channel,
             rx,
             disconnect: self.disconnect.clone(),
@@ -420,15 +448,21 @@ impl AsyncPeer {
     pub fn into_split(self) -> (AsyncPeerTx, AsyncPeerRx) {
         (self.tx, self.rx)
     }
+
+    /// Cancel the background reader task (local cancellation).
+    pub fn cancel(&self) {
+        self.rx.cancel();
+    }
 }
 
-pub(crate) fn build_async_peer(
+pub(crate) fn build_async_peer_with_cancel(
     id: String,
     read_half: OwnedReadHalf,
     write_half: OwnedWriteHalf,
     handshake: HandshakeResult,
     schema_registry: Option<SchemaRegistryHandle>,
     config: PeerConfig,
+    external_cancel: Option<CancellationToken>,
 ) -> AsyncPeer {
     let negotiated_set: HashSet<u16> = handshake.negotiated_channels.iter().copied().collect();
 
@@ -441,6 +475,8 @@ pub(crate) fn build_async_peer(
         config: config.clone(),
         ping_waiter: tokio::sync::Mutex::new(None),
         shutdown_waiter: tokio::sync::Mutex::new(None),
+        cancel: CancellationToken::new(),
+        external_cancel,
     });
 
     let (disconnect_tx, disconnect_rx) = watch::channel::<Option<PeerError>>(None);
@@ -457,12 +493,16 @@ pub(crate) fn build_async_peer(
     let budget = Arc::new(Semaphore::new(config.max_total_buffered_bytes));
 
     spawn_reader_task(
-        Arc::clone(&shared),
+        ReaderTaskCtx {
+            shared: Arc::downgrade(&shared),
+            cancel: shared.cancel.clone(),
+            external_cancel: shared.external_cancel.clone(),
+            any_tx: any_tx.clone(),
+            subscriptions: Arc::clone(&subscriptions),
+            disconnect_tx,
+            budget,
+        },
         read_half,
-        any_tx.clone(),
-        Arc::clone(&subscriptions),
-        disconnect_tx,
-        budget,
     );
 
     AsyncPeer {
@@ -552,14 +592,20 @@ fn deliver_frame(
     true
 }
 
-fn spawn_reader_task(
-    shared: Arc<Shared>,
-    mut reader: OwnedReadHalf,
-    any_tx: mpsc::Sender<QueuedFrame>,
-    subscriptions: Arc<Mutex<HashMap<u16, mpsc::Sender<QueuedFrame>>>>,
-    disconnect_tx: watch::Sender<Option<PeerError>>,
-    budget: Arc<Semaphore>,
-) {
+fn spawn_reader_task(ctx: ReaderTaskCtx, mut reader: OwnedReadHalf) {
+    let ReaderTaskCtx {
+        shared,
+        cancel,
+        external_cancel,
+        any_tx,
+        subscriptions,
+        disconnect_tx,
+        budget,
+    } = ctx;
+
+    let has_external = external_cancel.is_some();
+    let external_token = external_cancel.unwrap_or_default();
+
     tokio::spawn(async move {
         let mut buf = BytesMut::with_capacity(8 * 1024);
         let mut chunk = [0u8; READ_CHUNK_SIZE];
@@ -567,7 +613,23 @@ fn spawn_reader_task(
         let mut control_frames_seen = 0usize;
 
         loop {
-            let n = match reader.read(&mut chunk).await {
+            let read_res = tokio::select! {
+                _ = cancel.cancelled() => {
+                    let _ = disconnect_tx.send_replace(Some(PeerError::Disconnected(
+                        "cancelled".to_string(),
+                    )));
+                    break;
+                }
+                _ = external_token.cancelled(), if has_external => {
+                    let _ = disconnect_tx.send_replace(Some(PeerError::Disconnected(
+                        "cancelled".to_string(),
+                    )));
+                    break;
+                }
+                res = reader.read(&mut chunk) => res,
+            };
+
+            let n = match read_res {
                 Ok(0) => {
                     let _ = disconnect_tx.send_replace(Some(PeerError::Disconnected(
                         "connection closed".to_string(),
@@ -593,6 +655,11 @@ fn spawn_reader_task(
                 };
 
                 if decoded.channel == CONTROL {
+                    let Some(shared) = shared.upgrade() else {
+                        // All peer handles are dropped; exit.
+                        return;
+                    };
+
                     control_frames_seen = control_frames_seen.saturating_add(1);
                     if control_frames_seen > shared.config.max_control_frames_per_loop {
                         let _ = disconnect_tx.send_replace(Some(PeerError::Disconnected(
@@ -628,6 +695,10 @@ fn spawn_reader_task(
 
                 control_frames_seen = 0;
 
+                let Some(shared) = shared.upgrade() else {
+                    // All peer handles are dropped; exit.
+                    return;
+                };
                 if !deliver_frame(
                     &shared,
                     decoded,
@@ -641,6 +712,16 @@ fn spawn_reader_task(
             }
         }
     });
+}
+
+struct ReaderTaskCtx {
+    shared: Weak<Shared>,
+    cancel: CancellationToken,
+    external_cancel: Option<CancellationToken>,
+    any_tx: mpsc::Sender<QueuedFrame>,
+    subscriptions: Arc<Mutex<HashMap<u16, mpsc::Sender<QueuedFrame>>>>,
+    disconnect_tx: watch::Sender<Option<PeerError>>,
+    budget: Arc<Semaphore>,
 }
 
 async fn handle_control(
@@ -904,6 +985,32 @@ mod tests {
         client_tx.send(1, b"b").await.unwrap();
         let f2 = ch1.recv().await.unwrap();
         assert_eq!(f2.payload.as_ref(), b"b");
+
+        let _ = std::fs::remove_file(&sock);
+    }
+
+    #[tokio::test]
+    async fn external_cancellation_disconnects_recv() {
+        let sock = test_sock_path();
+        let token = CancellationToken::new();
+
+        let listener = AsyncPeerListener::bind(&sock)
+            .unwrap()
+            .with_channels(&[1])
+            .with_cancellation_token(token.clone());
+
+        let sock_client = sock.clone();
+        let client_task =
+            tokio::spawn(async move { async_connect(sock_client, &[1]).await.unwrap() });
+
+        let server = listener.accept_with_id("server").await.unwrap();
+        let _client = client_task.await.unwrap();
+        let (_server_tx, mut server_rx) = server.into_split();
+
+        token.cancel();
+
+        let err = server_rx.recv().await.unwrap_err();
+        assert!(matches!(err, PeerError::Disconnected(_)));
 
         let _ = std::fs::remove_file(&sock);
     }
