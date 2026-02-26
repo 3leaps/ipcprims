@@ -226,6 +226,27 @@ lint: ## Run linting (cargo clippy + goneat lint)
 	fi
 	@echo "[ok] Linting passed"
 
+check-windows: check-windows-msvc check-windows-gnu check-windows-arm64-msvc ## Run Windows target cargo checks (no link)
+	@echo "[ok] Windows target checks passed"
+
+check-windows-msvc: ## Windows target check: x86_64-pc-windows-msvc (foundation crates only)
+	@echo "Checking Windows target (x86_64-pc-windows-msvc)..."
+	rustup target add x86_64-pc-windows-msvc
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-msvc
+	@echo "[ok] x86_64-pc-windows-msvc check passed"
+
+check-windows-gnu: ## Windows target check: x86_64-pc-windows-gnu (foundation crates only)
+	@echo "Checking Windows target (x86_64-pc-windows-gnu)..."
+	rustup target add x86_64-pc-windows-gnu
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-gnu
+	@echo "[ok] x86_64-pc-windows-gnu check passed"
+
+check-windows-arm64-msvc: ## Windows target check: aarch64-pc-windows-msvc (foundation crates only)
+	@echo "Checking Windows target (aarch64-pc-windows-msvc)..."
+	rustup target add aarch64-pc-windows-msvc
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target aarch64-pc-windows-msvc
+	@echo "[ok] aarch64-pc-windows-msvc check passed"
+
 msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
 	@echo "Checking MSRV (core crates at 1.85, ipcprims-napi requires 1.88)..."
 	@if rustup run 1.85.0 cargo --version >/dev/null 2>&1; then \
@@ -247,28 +268,6 @@ msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
 		exit 1; \
 	fi
 	@echo "[ok] MSRV check passed (core crates at 1.85, ipcprims-napi requires 1.88)"
-
-# -----------------------------------------------------------------------------
-# Windows Target Checks (Local)
-# -----------------------------------------------------------------------------
-
-check-windows: check-windows-msvc check-windows-gnu check-windows-arm64-msvc ## Run Windows target cargo checks (no link)
-	@echo "[ok] Windows target checks passed"
-
-check-windows-msvc: ## cargo check for x86_64-pc-windows-msvc (no link)
-	@rustup target add x86_64-pc-windows-msvc >/dev/null
-	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-msvc
-	@echo "[ok] Windows MSVC target check passed"
-
-check-windows-gnu: ## cargo check for x86_64-pc-windows-gnu (no link)
-	@rustup target add x86_64-pc-windows-gnu >/dev/null
-	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-gnu
-	@echo "[ok] Windows GNU target check passed"
-
-check-windows-arm64-msvc: ## cargo check for aarch64-pc-windows-msvc (no link)
-	@rustup target add aarch64-pc-windows-msvc >/dev/null
-	@RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target aarch64-pc-windows-msvc
-	@echo "[ok] Windows ARM64 MSVC target check passed"
 
 deny: ## Run cargo-deny license and advisory checks
 	@echo "Running cargo-deny..."
