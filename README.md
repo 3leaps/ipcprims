@@ -69,7 +69,7 @@ Optional: schema validation rejects malformed payloads at the boundary
 
 ```toml
 [dependencies]
-ipcprims = "0.1"
+ipcprims = "0.2"
 ```
 
 ```rust

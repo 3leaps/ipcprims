@@ -11,7 +11,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [Unreleased]
+## [0.2.0] — 2026-02-26
+
+Tokio-native async API on Unix (UDS), MSRV consistency fixes, and dev tooling improvements.
 
 ### Added
 
@@ -19,11 +21,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Async test hardening**: `tokio_util::codec::Framed` integration test for `IpcCodec`, oversize-length rejection regression test, and async UDS hardening parity tests.
 - **AsyncPeer cancellation**: optional external `CancellationToken` wiring for structured shutdown, and reader task cancellation on drop (prevents leaked background read tasks).
 - **Dev tooling**: `scripts/commit-template-ai.txt` helper for correct AI-assisted commit trailers.
-- **Makefile**: `check-windows*` targets for local Windows target `cargo check` (no link) of core crates.
+- **Makefile**: `check-windows`, `check-windows-msvc`, `check-windows-gnu`, `check-windows-arm64-msvc` targets for local Windows target `cargo check` (no link) of core crates — mirrors CI `windows-cross-check` with `RUSTFLAGS="-Dwarnings"`.
+- **CI MSRV**: tag-triggered `msrv-matrix.yml` workflow for release-time MSRV confirmation (Linux/macOS/Windows).
+- **ADR-0001**: accepted design decision for async peer receive model (arrival-ordered global queue vs per-channel fanout).
 
 ### Changed
 
 - **PeerConfig**: added `enable_any_delivery` (async-only; defaults to enabled) to allow construction-time disabling of the arrival-ordered `any_rx` queue for channel-only consumers.
+- **MSRV policy**: README badge updated to `1.85+`; core crate MSRV remains 1.85.0; `ipcprims-napi` overrides to 1.88.0 (napi-build requirement).
+- **Makefile**: added `make msrv` target for local MSRV verification (excludes `ipcprims-napi`).
+
+### Fixed
+
+- **AsyncPeer**: reader task now cancels on drop (fixes resource leak for background read tasks).
+- **MSRV alignment**: envinfo test fixture updated to 1.85.0; NAPI Cargo.toml override documented.
 
 ## [0.1.2] — 2026-02-15
 
@@ -131,7 +142,7 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.1.2...HEAD
+[0.2.0]: https://github.com/3leaps/ipcprims/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/3leaps/ipcprims/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/3leaps/ipcprims/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/3leaps/ipcprims/releases/tag/v0.1.0
