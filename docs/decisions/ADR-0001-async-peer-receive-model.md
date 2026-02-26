@@ -1,6 +1,6 @@
 # ADR-0001: AsyncPeer Receive Model (Arrival Order, Split Handles, Bounded Buffers)
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-02-24
 **Deciders**: devlead, devrev (four-eyes)
 
