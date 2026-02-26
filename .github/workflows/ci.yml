@@ -8,6 +8,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
+# NOTE: MSRV and (future) Miri checks are available locally via `make msrv` / `make miri`.
+# Core crate MSRV: 1.85.0 (workspace Cargo.toml)
+# ipcprims-napi MSRV: 1.88.0 (napi-build requirement; bindings/typescript/Cargo.toml)
 jobs:
   format:
     name: Format Check
@@ -43,8 +46,7 @@ jobs:
       # Unlike sysprims, cross-check from Linux doesn't work here.
       #
       # Checks portable foundation crates. Peer/FFI/CLI need UnixDomainSocket
-      # (no Windows impl yet). Schema pulls windows_by_handle (unstable) via
-      # jsonschema dep tree. Both tracked for v0.2.0.
+      # (no Windows impl yet). Windows named pipes are tracked for v0.2.1.
       - name: cargo check
         run: cargo check -p ipcprims-transport -p ipcprims-frame --target ${{ matrix.target }}
   test:

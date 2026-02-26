@@ -12,6 +12,7 @@
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
 .PHONY: precommit prepush deny audit
+.PHONY: msrv
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
 .PHONY: ci release-check release-preflight
@@ -76,6 +77,7 @@ help: ## Show available targets
 	@echo "  lint            Run linting (cargo clippy + goneat lint)"
 	@echo "  precommit       Pre-commit checks (fast: fmt, clippy)"
 	@echo "  prepush         Pre-push checks (thorough: fmt, clippy, test, deny)"
+	@echo "  msrv            Verify build+test on MSRV toolchain (core crates)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
 	@echo "  check-windows   Run Windows target cargo checks (no link)"
@@ -223,6 +225,18 @@ lint: ## Run linting (cargo clippy + goneat lint)
 		echo "[!!] goneat not found — skipping non-Rust linting (run 'make bootstrap')"; \
 	fi
 	@echo "[ok] Linting passed"
+
+msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
+	@echo "Checking MSRV (core crates at 1.85, ipcprims-napi requires 1.88)..."
+	@if rustup run 1.85.0 cargo --version >/dev/null 2>&1; then \
+		rustup run 1.85.0 cargo build --workspace --exclude ipcprims-napi && \
+		rustup run 1.85.0 cargo test --workspace --exclude ipcprims-napi; \
+	else \
+		echo "[!!] Rust 1.85.0 toolchain not installed. Install with:"; \
+		echo "  rustup toolchain install 1.85.0"; \
+		exit 1; \
+	fi
+	@echo "[ok] MSRV check passed (core crates at 1.85, ipcprims-napi requires 1.88)"
 
 # -----------------------------------------------------------------------------
 # Windows Target Checks (Local)

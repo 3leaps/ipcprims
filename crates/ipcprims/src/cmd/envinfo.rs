@@ -135,7 +135,7 @@ mod tests {
             schema_id: "x",
             version: "0.1.0".to_string(),
             target: "a-b".to_string(),
-            rust_version: "1.81.0".to_string(),
+            rust_version: "1.85.0".to_string(),
             git_hash: "abc".to_string(),
             platform: PlatformInfo {
                 os: "macos".to_string(),
