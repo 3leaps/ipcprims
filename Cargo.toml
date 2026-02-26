@@ -38,6 +38,7 @@ tracing = "0.1"
 
 # Async (feature-gated)
 tokio = { version = "1", features = ["io-util", "net", "rt-multi-thread", "macros", "sync", "time"] }
+# NOTE: `tokio-util`'s `CancellationToken` is not feature-gated; we enable `codec` for `IpcCodec`.
 tokio-util = { version = "0.7", features = ["codec"] }
 futures-core = "0.3"
 

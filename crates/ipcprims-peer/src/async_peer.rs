@@ -190,8 +190,9 @@ struct Shared {
 
     // Cancellation signal for the reader task.
     //
-    // This is used both for internal shutdown (drop of the last Rx handle) and for
-    // optional external structured cancellation (caller-provided token).
+    // This is used both for internal shutdown (drop of the last peer handle: Tx, Rx,
+    // AnyReceiver/ChannelReceiver) and for optional external structured cancellation
+    // (caller-provided token).
     cancel: CancellationToken,
 
     // Optional external structured cancellation token (brief D8).
