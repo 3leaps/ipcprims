@@ -327,17 +327,79 @@ fn send_control_json<T: Serialize, W: Write>(writer: &mut FrameWriter<W>, value:
 async fn send_control_json_async<W: tokio::io::AsyncWrite + Unpin>(
     writer: &mut W,
     value: &impl Serialize,
+    deadline: Instant,
+    timeout: Duration,
 ) -> Result<()> {
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(PeerError::Timeout(timeout));
+    }
+
     let payload = serde_json::to_vec(value)?;
     let mut buf = BytesMut::new();
     ipcprims_frame::encode_frame(CONTROL, &payload, &mut buf).map_err(PeerError::Frame)?;
-    tokio::io::AsyncWriteExt::write_all(writer, &buf)
+
+    let remaining = deadline.saturating_duration_since(now);
+    tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::write_all(writer, &buf))
         .await
+        .map_err(|_| PeerError::Timeout(timeout))?
         .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
-    tokio::io::AsyncWriteExt::flush(writer)
+
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(PeerError::Timeout(timeout));
+    }
+    let remaining = deadline.saturating_duration_since(now);
+    tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::flush(writer))
         .await
+        .map_err(|_| PeerError::Timeout(timeout))?
         .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
     Ok(())
+}
+
+#[cfg(all(test, unix, feature = "async"))]
+mod async_write_timeout_tests {
+    use super::*;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    struct PendingWriter;
+
+    impl tokio::io::AsyncWrite for PendingWriter {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            _buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            Poll::Pending
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Pending
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Poll::Pending
+        }
+    }
+
+    #[tokio::test]
+    async fn async_handshake_write_is_timed_out() {
+        let mut w = PendingWriter;
+        let timeout = Duration::from_millis(20);
+        let deadline = Instant::now() + timeout;
+
+        let req = HandshakeRequest {
+            protocol: "ipcprims".to_string(),
+            version: "1.0".to_string(),
+            channels: vec![1],
+            auth_token: None,
+        };
+        let err = send_control_json_async(&mut w, &req, deadline, timeout)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, PeerError::Timeout(_)));
+    }
 }
 
 fn recv_control_payload<R: Read>(
@@ -482,9 +544,8 @@ where
         auth_token: config.auth_token.clone(),
     };
 
-    send_control_json_async(writer, &req).await?;
-
     let deadline = Instant::now() + config.timeout;
+    send_control_json_async(writer, &req, deadline, config.timeout).await?;
     let payload = recv_control_payload_async(
         reader,
         deadline,
@@ -599,7 +660,7 @@ where
         channels: negotiated.clone(),
         peer_id: peer_id.to_string(),
     };
-    send_control_json_async(writer, &resp).await?;
+    send_control_json_async(writer, &resp, deadline, config.timeout).await?;
 
     Ok(HandshakeResult {
         peer_id: peer_id.to_string(),

@@ -272,9 +272,16 @@ impl AsyncPeerTx {
         }
 
         let start = Instant::now();
-        self.send_json(CONTROL, &ControlMessage::ping()).await?;
+        if let Err(e) = self.send_json(CONTROL, &ControlMessage::ping()).await {
+            let _ = self.shared.ping_waiter.lock().await.take();
+            return Err(e);
+        }
 
-        match tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await {
+        let res = tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await;
+        // Clear the in-flight waiter on all paths. If the peer responds after a timeout, we
+        // intentionally drop the late PONG.
+        let _ = self.shared.ping_waiter.lock().await.take();
+        match res {
             Ok(Ok(())) => Ok(start.elapsed()),
             Ok(Err(_)) => Err(PeerError::Disconnected("ping waiter dropped".to_string())),
             Err(_) => Err(PeerError::Timeout(self.shared.config.shutdown_timeout)),
@@ -293,10 +300,19 @@ impl AsyncPeerTx {
             *guard = Some(tx);
         }
 
-        self.send_json(CONTROL, &ControlMessage::shutdown_request(None))
-            .await?;
+        if let Err(e) = self
+            .send_json(CONTROL, &ControlMessage::shutdown_request(None))
+            .await
+        {
+            let _ = self.shared.shutdown_waiter.lock().await.take();
+            return Err(e);
+        }
 
-        match tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await {
+        let res = tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await;
+        // Clear the in-flight waiter on all paths. If the peer responds after a timeout, we
+        // intentionally drop the late ACK.
+        let _ = self.shared.shutdown_waiter.lock().await.take();
+        match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(_)) => Err(PeerError::ShutdownFailed(
                 "shutdown waiter dropped".to_string(),
@@ -803,6 +819,8 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use ipcprims_frame::{COMMAND, DATA, ERROR, TELEMETRY};
+
     use crate::async_connector::async_connect;
     use crate::async_listener::AsyncPeerListener;
 
@@ -1015,5 +1033,83 @@ mod tests {
         assert!(matches!(err, PeerError::Disconnected(_)));
 
         let _ = std::fs::remove_file(&sock);
+    }
+
+    #[tokio::test]
+    async fn ping_timeout_clears_in_flight_waiter() {
+        let sock = test_sock_path();
+
+        // Server cancels its reader task so it never auto-pongs.
+        let listener = AsyncPeerListener::bind(&sock).unwrap();
+        let server_task = tokio::spawn(async move {
+            let peer = listener.accept().await.unwrap();
+            peer.cancel();
+            peer
+        });
+
+        let client_cfg = PeerConfig {
+            shutdown_timeout: Duration::from_millis(25),
+            ..PeerConfig::default()
+        };
+        let client = crate::async_connector::async_connect_with_config(
+            &sock,
+            &[COMMAND, DATA, TELEMETRY, ERROR],
+            &crate::handshake::HandshakeConfig::default(),
+            None,
+            Some(client_cfg),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let (tx, _rx) = client.into_split();
+
+        let _server = server_task.await.unwrap();
+
+        let err1 = tx.ping().await.unwrap_err();
+        assert!(matches!(err1, PeerError::Timeout(_)));
+
+        // Regression: a timeout used to leave the waiter stuck, causing "already in flight".
+        let err2 = tx.ping().await.unwrap_err();
+        assert!(matches!(err2, PeerError::Timeout(_)));
+    }
+
+    #[tokio::test]
+    async fn shutdown_timeout_clears_in_flight_waiter() {
+        let sock = test_sock_path();
+
+        // Server cancels its reader task so it never acknowledges shutdown.
+        let listener = AsyncPeerListener::bind(&sock).unwrap();
+        let server_task = tokio::spawn(async move {
+            let peer = listener.accept().await.unwrap();
+            peer.cancel();
+            peer
+        });
+
+        let client_cfg = PeerConfig {
+            shutdown_timeout: Duration::from_millis(25),
+            ..PeerConfig::default()
+        };
+        let client = crate::async_connector::async_connect_with_config(
+            &sock,
+            &[COMMAND, DATA, TELEMETRY, ERROR],
+            &crate::handshake::HandshakeConfig::default(),
+            None,
+            Some(client_cfg),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let (tx, _rx) = client.into_split();
+
+        let _server = server_task.await.unwrap();
+
+        let err1 = tx.shutdown().await.unwrap_err();
+        assert!(matches!(err1, PeerError::ShutdownFailed(_)));
+
+        // Regression: a timeout used to leave the waiter stuck, causing "already in flight".
+        let err2 = tx.shutdown().await.unwrap_err();
+        assert!(matches!(err2, PeerError::ShutdownFailed(_)));
     }
 }
