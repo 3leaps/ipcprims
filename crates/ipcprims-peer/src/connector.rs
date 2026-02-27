@@ -1,11 +1,14 @@
 use std::path::Path;
 
+#[cfg(unix)]
 use ipcprims_frame::{FrameConfig, FrameReader, FrameWriter, DEFAULT_MAX_PAYLOAD};
 #[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
-use crate::handshake::{handshake_client_with_config, HandshakeConfig};
+#[cfg(unix)]
+use crate::handshake::handshake_client_with_config;
+use crate::handshake::HandshakeConfig;
 use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
 
 /// Connect to a listening peer as a client.

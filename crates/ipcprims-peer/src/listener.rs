@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(unix)]
 use ipcprims_frame::{
     FrameConfig, FrameReader, FrameWriter, COMMAND, DATA, DEFAULT_MAX_PAYLOAD, ERROR, TELEMETRY,
 };
@@ -8,7 +9,9 @@ use ipcprims_frame::{
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
-use crate::handshake::{handshake_server_with_config, HandshakeConfig};
+#[cfg(unix)]
+use crate::handshake::handshake_server_with_config;
+use crate::handshake::HandshakeConfig;
 use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
 
 /// Listens for and accepts peer connections.

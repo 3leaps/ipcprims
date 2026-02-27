@@ -78,12 +78,13 @@ pub struct Peer {
 
 impl Peer {
     /// Create a peer from connected components.
+    #[cfg(unix)]
     pub(crate) fn from_parts(
         id: String,
         reader: FrameReader<IpcStream>,
         writer: FrameWriter<IpcStream>,
         mut handshake_result: HandshakeResult,
-        schema_registry: Option<SchemaRegistryHandle>,
+        #[cfg_attr(not(unix), allow(dead_code))] schema_registry: Option<SchemaRegistryHandle>,
         config: PeerConfig,
     ) -> Self {
         let _ = reader
