@@ -154,11 +154,14 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > create new packages — only update existing ones. If any are missing, do the manual first
 > publish first. See `docs/guides/npm-publishing.md` for the full guide.
 >
-> ```bash
-> npm view @3leaps/ipcprims version 2>/dev/null || echo "MISSING"
-> for pkg in darwin-arm64 linux-x64-gnu linux-x64-musl linux-arm64-gnu win32-x64-msvc; do
->   result=$(npm view "@3leaps/ipcprims-${pkg}" version 2>/dev/null || echo "MISSING")
->   echo "@3leaps/ipcprims-${pkg}: ${result}"
+ > ```bash
+> VERSION=$(cat VERSION)
+> for pkg in "@3leaps/ipcprims" "@3leaps/ipcprims-darwin-arm64" "@3leaps/ipcprims-linux-x64-gnu" \
+>            "@3leaps/ipcprims-linux-x64-musl" "@3leaps/ipcprims-linux-arm64-gnu" "@3leaps/ipcprims-win32-x64-msvc"; do
+>   result=$(curl -sf "https://registry.npmjs.org/${pkg}/${VERSION}" 2>/dev/null \
+>     | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','?'))" 2>/dev/null \
+>     || echo "MISSING")
+>   echo "${pkg}: ${result}"
 > done
 > ```
 

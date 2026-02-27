@@ -114,15 +114,22 @@ If any are missing, do the manual first publish before running the OIDC workflow
    cd -
    ```
 
-5. **Verify all six are on npm:**
+5. **Verify all six are on npm** (uses registry API directly — no auth required):
 
    ```bash
    VERSION=$(cat VERSION)
-   npm view "@3leaps/ipcprims@${VERSION}" version
-   for pkg in darwin-arm64 linux-x64-gnu linux-x64-musl linux-arm64-gnu win32-x64-msvc; do
-     npm view "@3leaps/ipcprims-${pkg}@${VERSION}" version
+   for pkg in "@3leaps/ipcprims" "@3leaps/ipcprims-darwin-arm64" "@3leaps/ipcprims-linux-x64-gnu" \
+              "@3leaps/ipcprims-linux-x64-musl" "@3leaps/ipcprims-linux-arm64-gnu" "@3leaps/ipcprims-win32-x64-msvc"; do
+     result=$(curl -sf "https://registry.npmjs.org/${pkg}/${VERSION}" 2>/dev/null \
+       | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','?'))" 2>/dev/null \
+       || echo "NOT FOUND")
+     echo "${pkg}: ${result}"
    done
    ```
+
+   > Do not use `npm view` for verification — it requires a valid local auth token and will
+   > report 404 for packages that actually exist if the token has expired mid-session.
+   > The registry API check above works without auth.
 
 6. **Re-run the OIDC workflow** (optional, for audit trail — it will be a no-op since
    the packages are already published, or skip and move on):
