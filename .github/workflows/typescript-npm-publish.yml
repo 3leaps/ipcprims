@@ -208,11 +208,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== DRY RUN - No packages will be published ==="
-
-          # Force OIDC mode: do not allow token auth to interfere.
-          unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
           printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN NPM_TOKEN
 
           echo "Platform packages:"
           for dir in npm-packages/*/; do
@@ -238,10 +235,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Force OIDC mode: do not allow token auth to interfere.
-          unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
+          # Overwrite the npmrc that actions/setup-node wrote in place.
+          # NPM_CONFIG_USERCONFIG is locked to that path at job level and cannot
+          # be overridden by exporting a new value in a step. Writing always-auth=false
+          # into the existing file is the only reliable way to prevent token auth
+          # from interfering with OIDC provenance publishing.
           printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN NPM_TOKEN
 
           echo "Publishing platform packages..."
           for dir in npm-packages/*/; do
@@ -254,9 +254,8 @@ jobs:
         working-directory: bindings/typescript
         run: |
           set -euo pipefail
-          unset NODE_AUTH_TOKEN NPM_TOKEN
-          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
           printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN NPM_TOKEN
           echo "Publishing @3leaps/ipcprims..."
           npm publish --access public
       - name: Verify publication

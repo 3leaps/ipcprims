@@ -151,20 +151,24 @@ needed again for an existing package.
 The package doesn't exist on npm yet. Follow the Manual First Publish steps above.
 Do **not** only publish the root package — all six must be created.
 
-### OIDC token error / `always-auth` warning
+### OIDC token error / `always-auth` warning / E404 on existing package
 
-The workflow writes a clean `NPM_CONFIG_USERCONFIG` that overrides the npmrc left
-by `actions/setup-node`. If you see `always-auth` warnings or token errors in an
-otherwise correct run, verify the workflow has the `NPM_CONFIG_USERCONFIG` override:
+`actions/setup-node` sets `NPM_CONFIG_USERCONFIG` as a job-level environment variable
+pointing at its own generated npmrc. That file contains `always-auth=true` and a
+`NODE_AUTH_TOKEN` placeholder. Because `NPM_CONFIG_USERCONFIG` is set at job level,
+exporting a new path in a step has no effect — the step sees the job-level value.
 
-```yaml
-unset NODE_AUTH_TOKEN NPM_TOKEN
-export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
+The only reliable fix is to **overwrite the file in place** at the start of each
+publish step, before unsetting the token:
+
+```bash
 printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
+unset NODE_AUTH_TOKEN NPM_TOKEN
 ```
 
-This was missing in the original ipcprims workflow (fixed in v0.2.0 release cycle)
-and is present in the sysprims workflow as the reference implementation.
+If this is missing and `always-auth=true` remains, npm will attempt token auth and
+get `E404` on a `PUT` even for packages that exist — the registry rejects the
+malformed auth rather than falling through to OIDC provenance.
 
 ### Prebuilds commit mismatch
 
