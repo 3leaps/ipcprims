@@ -106,6 +106,7 @@ fn transport_to_frame_error(err: ipcprims_transport::TransportError) -> FrameErr
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+    #[cfg(unix)]
     use std::sync::{Arc, Mutex};
 
     use bytes::{BufMut, BytesMut};
@@ -238,6 +239,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn roundtrip_over_pipe() {
         let (left, right) = std::os::unix::net::UnixStream::pair().unwrap();
         let mut writer = crate::writer::FrameWriter::new(left);
@@ -251,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn multi_channel_roundtrip() {
         let (left, right) = std::os::unix::net::UnixStream::pair().unwrap();
         let mut writer = crate::writer::FrameWriter::new(left);
@@ -273,6 +276,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn concurrent_reader_writer_threads() {
         let (left, right) = std::os::unix::net::UnixStream::pair().unwrap();
         let mut writer = crate::writer::FrameWriter::new(left);

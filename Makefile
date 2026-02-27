@@ -232,19 +232,19 @@ check-windows: check-windows-msvc check-windows-gnu check-windows-arm64-msvc ## 
 check-windows-msvc: ## Windows target check: x86_64-pc-windows-msvc (foundation crates only)
 	@echo "Checking Windows target (x86_64-pc-windows-msvc)..."
 	rustup target add x86_64-pc-windows-msvc
-	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-msvc
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --all-targets --target x86_64-pc-windows-msvc
 	@echo "[ok] x86_64-pc-windows-msvc check passed"
 
 check-windows-gnu: ## Windows target check: x86_64-pc-windows-gnu (foundation crates only)
 	@echo "Checking Windows target (x86_64-pc-windows-gnu)..."
 	rustup target add x86_64-pc-windows-gnu
-	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target x86_64-pc-windows-gnu
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --all-targets --target x86_64-pc-windows-gnu
 	@echo "[ok] x86_64-pc-windows-gnu check passed"
 
 check-windows-arm64-msvc: ## Windows target check: aarch64-pc-windows-msvc (foundation crates only)
 	@echo "Checking Windows target (aarch64-pc-windows-msvc)..."
 	rustup target add aarch64-pc-windows-msvc
-	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --target aarch64-pc-windows-msvc
+	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --all-targets --target aarch64-pc-windows-msvc
 	@echo "[ok] aarch64-pc-windows-msvc check passed"
 
 msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)

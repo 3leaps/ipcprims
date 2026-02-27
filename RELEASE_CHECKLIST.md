@@ -11,57 +11,63 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 
 ## 1. Pre-Release Preparation
 
-### Code Quality Gates
-
-- [ ] Ensure `main` is clean: `git status` shows no uncommitted changes
-- [ ] Run pre-push checks: `make prepush` passes
-- [ ] Run full test suite: `cargo test --workspace --all-features`
-- [ ] Verify cargo-deny passes: `cargo deny check`
-
 ### Version & Documentation
 
-- [ ] Update `VERSION` file with new semver (e.g., `0.1.1`)
-- [ ] Sync version to Cargo.toml: `make version-sync`
-- [ ] Update `CHANGELOG.md` (move Unreleased to new version section)
+- [ ] Update `VERSION` file with new semver (e.g., `0.2.0`)
+- [ ] Sync version to all manifests: `make version-sync`
+  - Syncs `Cargo.toml` workspace, `Cargo.lock`, and all `bindings/typescript` `package.json` files
+  - **Do not skip**: version drift between `VERSION` and `Cargo.toml` is a hard failure in `make prepush`
+- [ ] Update `CHANGELOG.md` (move Unreleased section to new version heading)
 - [ ] Create release notes: `docs/releases/vX.Y.Z.md`
 
-### Pre-Tag Verification
+### Pre-Tag Quality Gates
 
 - [ ] **Run preflight checks**: `make release-preflight`
-  - Validates: working tree clean, prepush checks pass, version synced, release notes exist, local/remote sync
-  - **Must pass before tagging**
 
-### Commit & Tag
+  This is the single authoritative gate. It runs, in order:
+  1. Working tree clean check
+  2. `make prepush` — fmt, clippy, tests, cargo-deny, **version consistency**
+  3. `make version-check` — full consistency: `VERSION`, `Cargo.toml`, all TypeScript packages
+  4. Release notes exist at `docs/releases/vX.Y.Z.md`
+  5. Local/remote sync (no unpushed or unpulled commits)
 
-- [ ] Commit changes:
+  **Must pass before pushing or tagging.**
+
+### Commit & Push to main
+
+- [ ] Commit all changes with proper attribution:
+
   ```bash
   git add -A
-  git commit -m "release: prepare vX.Y.Z"
+  git commit -m "chore: bump version to vX.Y.Z"
+  # (see AGENTS.md for full attribution trailer format)
   ```
+
+  > **Note**: The commit message must say `vX.Y.Z` (the real version), not `vX.Y.Z-dev`.
+  > The `-dev` suffix is only meaningful in the post-release bump commit (step 4).
+
 - [ ] Push to main:
   ```bash
   git push origin main
   ```
-- [ ] **Verify local/remote sync** (required before tagging):
 
-  ```bash
-  git fetch origin
-  # Must show no output (no divergence):
-  git log --oneline origin/main..HEAD
-  git log --oneline HEAD..origin/main
-  ```
+### CI Verification on main (REQUIRED before tagging)
 
-- [ ] Create and push tag:
+**Do not tag until CI on `main` is green.** Tagging a broken commit creates an unusable release.
+
+- [ ] Monitor CI run:
   ```bash
-  VERSION=$(cat VERSION)
-  git tag -a "v${VERSION}" -m "v${VERSION}: <brief description>"
-  git push origin "v${VERSION}"
+  gh run list --branch main --limit 3
+  gh run watch <run-id>
   ```
+- [ ] Confirm all jobs pass — no failures, no skipped required jobs
+- [ ] Note the annotation `Restore cache failed: go.sum not found` on Go darwin job is a known
+      non-fatal warning (the Go bindings dir is a CGo module without a `go.sum` at root)
 
 ### Bindings (Pre-Tag) — skip for source-only releases
 
 > **Note**: These steps apply when releasing binary/FFI artifacts (v0.1.2+).
-> For source-only releases (v0.1.0, v0.1.1), skip to CI Verification.
+> For source-only releases, skip to tagging.
 
 - [ ] **Go bindings prep** (MUST happen before tagging):
   1. Run `go-bindings.yml` workflow via GitHub Actions (manual dispatch, input: version)
@@ -72,18 +78,33 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] Verify `go test ./...` passes in `bindings/go/ipcprims/`
 - [ ] Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
 
+### Create and Push Tag
+
+- [ ] Create annotated tag:
+  ```bash
+  VERSION=$(cat VERSION)
+  git tag -a "v${VERSION}" -m "v${VERSION}: <brief description of release>"
+  ```
+- [ ] Push tag (triggers release workflow):
+  ```bash
+  git push origin "v${VERSION}"
+  ```
+
+### CI Verification on Tag
+
+- [ ] Wait for GitHub Actions release workflow to complete on the tag
+- [ ] Verify CI status is green: `gh run list --branch "v${VERSION}"`
+- [ ] Check release draft has expected artifacts (binaries for all platforms)
+
 ### Bindings (Post-Signing) — skip for source-only releases
 
 - [ ] **TypeScript N-API prebuilds**: Run `typescript-napi-prebuilds.yml` on the tagged commit
 - [ ] **TypeScript npm publish**: Run `typescript-npm-publish.yml` with OIDC trusted publishing
 
-### CI Verification
-
-- [ ] Wait for GitHub Actions release workflow to complete
-- [ ] Verify CI status is green on the tag
-- [ ] Check release has expected artifacts
-
 ## 2. Manual Signing (Local Machine)
+
+> **Note**: MFA is required for signing. Signing keys are protected by hardware token.
+> The maintainer must be physically present to complete this step.
 
 ### Set Environment Variables
 
@@ -193,17 +214,24 @@ minisign -Vm SHA256SUMS -p ipcprims-minisign.pub
 
 ## 4. Post-Release Version Bump
 
-After release, bump VERSION for next development cycle:
+After the release is uploaded and verified, bump VERSION for the next development cycle:
 
 ```bash
-make version-patch   # 0.1.0 -> 0.1.1
-# or: make version-minor  # 0.1.0 -> 0.2.0
-# or: make version-major  # 0.1.0 -> 1.0.0
+make version-patch   # 0.2.0 -> 0.2.1
+# or: make version-minor  # 0.2.0 -> 0.3.0
+# or: make version-major  # 0.2.0 -> 1.0.0
 
-git add VERSION
-git commit -m "chore: bump version to $(cat VERSION)-dev"
+make version-sync    # sync new version to Cargo.toml and package.json files
+
+git add VERSION Cargo.toml Cargo.lock bindings/typescript
+git commit -m "chore: bump version to v$(cat VERSION)-dev"
 git push origin main
 ```
+
+> **Important**: `make version-sync` must be run immediately after the version bump.
+> The `-dev` suffix in the commit message is a convention marking this as a development
+> snapshot — it does not affect semver. `make prepush` will catch any drift between
+> `VERSION` and `Cargo.toml` before the next release.
 
 ## Quick Reference: All Release Targets
 
@@ -215,7 +243,7 @@ git push origin main
 | `make release-clean`             | Remove dist/release contents                                                   |
 | `make release-download`          | Download CI artifacts from GitHub                                              |
 | `make release-checksums`         | Generate SHA256SUMS and SHA512SUMS                                             |
-| `make release-sign`              | Sign checksums with minisign + PGP                                             |
+| `make release-sign`              | Sign checksums with minisign + PGP (requires MFA/hardware token)               |
 | `make release-export-keys`       | Export public signing keys                                                     |
 | `make release-verify`            | Verify checksums, signatures, and keys                                         |
 | `make release-notes`             | Copy release notes to dist                                                     |
@@ -241,12 +269,30 @@ mkdir -p docs/releases
 # Write release notes to docs/releases/vX.Y.Z.md
 ```
 
-### CI workflow failed
+### Version mismatch in prepush or preflight
 
-1. Check GitHub Actions logs
+```bash
+make version-sync    # sync VERSION -> Cargo.toml + package.json
+make version-check   # verify all are consistent
+```
+
+### CI on main failed before tagging
+
+1. Fix the issue on main, push the fix
+2. Wait for CI to go green
+3. Only then proceed to tag
+
+### CI on tag failed after tagging
+
+1. Check GitHub Actions logs: `gh run list --branch "v${VERSION}"`
 2. Fix the issue on main
-3. Delete the tag and release draft
-4. Start over from step 1
+3. Delete the tag and release draft:
+   ```bash
+   git tag -d "v${VERSION}"
+   git push origin --delete "v${VERSION}"
+   gh release delete "v${VERSION}" --yes
+   ```
+4. Start over from the tagging step
 
 ### Signature verification failed
 
@@ -263,8 +309,8 @@ If rotating signing keys, update:
 
 ## Versioning Policy
 
-- **Patch** (0.1.1): Bug fixes, security patches
-- **Minor** (0.2.0): New features, backward-compatible
+- **Patch** (0.2.1): Bug fixes, security patches
+- **Minor** (0.3.0): New features, backward-compatible
 - **Major** (1.0.0): Breaking changes, API changes
 
 See `docs/decisions/` for versioning decisions.
