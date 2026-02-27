@@ -39,7 +39,7 @@ AsyncPeer MUST provide an "any frames" receive path that preserves on-wire arriv
 - The background reader task reads frames sequentially from the transport.
 - For each non-CONTROL frame, it enqueues the frame onto a single `any_tx` queue in the
   same order the frames were decoded.
-- `AsyncPeer::recv()` and any `Stream` implementation are driven exclusively from `any_rx`.
+- `AsyncPeerRx::recv()` and any `Stream` implementation (for `AnyReceiver`) are driven exclusively from `any_rx`.
 
 This is the only mechanism allowed to claim "arrival order" across channels.
 

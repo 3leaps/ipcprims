@@ -14,6 +14,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -185,8 +186,9 @@ struct Shared {
     writer: tokio::sync::Mutex<OwnedWriteHalf>,
     schema_registry: Option<SchemaRegistryHandle>,
     config: PeerConfig,
-    ping_waiter: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
-    shutdown_waiter: tokio::sync::Mutex<Option<oneshot::Sender<()>>>,
+    waiter_token: AtomicU64,
+    ping_waiter: tokio::sync::Mutex<Option<InFlightWaiter>>,
+    shutdown_waiter: tokio::sync::Mutex<Option<InFlightWaiter>>,
 
     // Cancellation signal for the reader task.
     //
@@ -198,6 +200,47 @@ struct Shared {
 
     // Optional external structured cancellation token (brief D8).
     external_cancel: Option<CancellationToken>,
+}
+
+#[derive(Debug)]
+struct InFlightWaiter {
+    token: u64,
+    tx: oneshot::Sender<()>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum WaiterKind {
+    Ping,
+    Shutdown,
+}
+
+/// Clears the in-flight waiter if the ping/shutdown future is dropped (e.g., wrapped in an outer
+/// timeout). Uses token matching so we don't accidentally clear a newer in-flight waiter.
+struct WaiterDropGuard {
+    shared: Arc<Shared>,
+    token: u64,
+    kind: WaiterKind,
+}
+
+impl Drop for WaiterDropGuard {
+    fn drop(&mut self) {
+        match self.kind {
+            WaiterKind::Ping => {
+                if let Ok(mut guard) = self.shared.ping_waiter.try_lock() {
+                    if guard.as_ref().is_some_and(|w| w.token == self.token) {
+                        let _ = guard.take();
+                    }
+                }
+            }
+            WaiterKind::Shutdown => {
+                if let Ok(mut guard) = self.shared.shutdown_waiter.try_lock() {
+                    if guard.as_ref().is_some_and(|w| w.token == self.token) {
+                        let _ = guard.take();
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Drop for Shared {
@@ -261,6 +304,12 @@ impl AsyncPeerTx {
 
     pub async fn ping(&self) -> Result<Duration> {
         let (tx, rx) = oneshot::channel();
+        let token = self.shared.waiter_token.fetch_add(1, Ordering::Relaxed);
+        let _drop_guard = WaiterDropGuard {
+            shared: Arc::clone(&self.shared),
+            token,
+            kind: WaiterKind::Ping,
+        };
         {
             let mut guard = self.shared.ping_waiter.lock().await;
             if guard.is_some() {
@@ -268,19 +317,27 @@ impl AsyncPeerTx {
                     "ping already in flight".to_string(),
                 ));
             }
-            *guard = Some(tx);
+            *guard = Some(InFlightWaiter { token, tx });
         }
 
         let start = Instant::now();
         if let Err(e) = self.send_json(CONTROL, &ControlMessage::ping()).await {
-            let _ = self.shared.ping_waiter.lock().await.take();
+            let mut guard = self.shared.ping_waiter.lock().await;
+            if guard.as_ref().is_some_and(|w| w.token == token) {
+                let _ = guard.take();
+            }
             return Err(e);
         }
 
         let res = tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await;
         // Clear the in-flight waiter on all paths. If the peer responds after a timeout, we
         // intentionally drop the late PONG.
-        let _ = self.shared.ping_waiter.lock().await.take();
+        {
+            let mut guard = self.shared.ping_waiter.lock().await;
+            if guard.as_ref().is_some_and(|w| w.token == token) {
+                let _ = guard.take();
+            }
+        }
         match res {
             Ok(Ok(())) => Ok(start.elapsed()),
             Ok(Err(_)) => Err(PeerError::Disconnected("ping waiter dropped".to_string())),
@@ -290,6 +347,12 @@ impl AsyncPeerTx {
 
     pub async fn shutdown(&self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
+        let token = self.shared.waiter_token.fetch_add(1, Ordering::Relaxed);
+        let _drop_guard = WaiterDropGuard {
+            shared: Arc::clone(&self.shared),
+            token,
+            kind: WaiterKind::Shutdown,
+        };
         {
             let mut guard = self.shared.shutdown_waiter.lock().await;
             if guard.is_some() {
@@ -297,21 +360,29 @@ impl AsyncPeerTx {
                     "shutdown already in flight".to_string(),
                 ));
             }
-            *guard = Some(tx);
+            *guard = Some(InFlightWaiter { token, tx });
         }
 
         if let Err(e) = self
             .send_json(CONTROL, &ControlMessage::shutdown_request(None))
             .await
         {
-            let _ = self.shared.shutdown_waiter.lock().await.take();
+            let mut guard = self.shared.shutdown_waiter.lock().await;
+            if guard.as_ref().is_some_and(|w| w.token == token) {
+                let _ = guard.take();
+            }
             return Err(e);
         }
 
         let res = tokio::time::timeout(self.shared.config.shutdown_timeout, rx).await;
         // Clear the in-flight waiter on all paths. If the peer responds after a timeout, we
         // intentionally drop the late ACK.
-        let _ = self.shared.shutdown_waiter.lock().await.take();
+        {
+            let mut guard = self.shared.shutdown_waiter.lock().await;
+            if guard.as_ref().is_some_and(|w| w.token == token) {
+                let _ = guard.take();
+            }
+        }
         match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(_)) => Err(PeerError::ShutdownFailed(
@@ -491,6 +562,7 @@ pub(crate) fn build_async_peer_with_cancel(
         writer: tokio::sync::Mutex::new(write_half),
         schema_registry,
         config: config.clone(),
+        waiter_token: AtomicU64::new(1),
         ping_waiter: tokio::sync::Mutex::new(None),
         shutdown_waiter: tokio::sync::Mutex::new(None),
         cancel: CancellationToken::new(),
@@ -762,14 +834,14 @@ async fn handle_control(
             Ok(None)
         }
         CONTROL_PONG => {
-            if let Some(tx) = shared.ping_waiter.lock().await.take() {
-                let _ = tx.send(());
+            if let Some(w) = shared.ping_waiter.lock().await.take() {
+                let _ = w.tx.send(());
             }
             Ok(None)
         }
         CONTROL_SHUTDOWN_ACK => {
-            if let Some(tx) = shared.shutdown_waiter.lock().await.take() {
-                let _ = tx.send(());
+            if let Some(w) = shared.shutdown_waiter.lock().await.take() {
+                let _ = w.tx.send(());
             }
             Ok(None)
         }
