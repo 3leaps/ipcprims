@@ -195,12 +195,24 @@ jobs:
           done
 
           echo "All platform packages verified"
+      - name: Build root package
+        working-directory: bindings/typescript
+        run: |
+          set -euo pipefail
+          # Use npm install instead of npm ci because platform packages are being
+          # published in this workflow and don't exist yet as optional dependencies.
+          npm install --omit=optional
+          npm run build
       - name: Publish (dry run)
         if: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           echo "=== DRY RUN - No packages will be published ==="
+
+          # Force OIDC mode: do not allow token auth to interfere.
           unset NODE_AUTH_TOKEN NPM_TOKEN
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
+          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
 
           echo "Platform packages:"
           for dir in npm-packages/*/; do
@@ -225,7 +237,12 @@ jobs:
         if: ${{ !inputs.dry_run }}
         run: |
           set -euo pipefail
+
+          # Force OIDC mode: do not allow token auth to interfere.
           unset NODE_AUTH_TOKEN NPM_TOKEN
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
+          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
+
           echo "Publishing platform packages..."
           for dir in npm-packages/*/; do
             pkg=$(basename "$dir")
@@ -238,6 +255,8 @@ jobs:
         run: |
           set -euo pipefail
           unset NODE_AUTH_TOKEN NPM_TOKEN
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc-oidc"
+          printf '%s\n' 'registry=https://registry.npmjs.org/' 'always-auth=false' > "$NPM_CONFIG_USERCONFIG"
           echo "Publishing @3leaps/ipcprims..."
           npm publish --access public
       - name: Verify publication
