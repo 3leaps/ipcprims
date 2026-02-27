@@ -76,7 +76,7 @@ help: ## Show available targets
 	@echo "  fmt             Format code (cargo fmt)"
 	@echo "  lint            Run linting (cargo clippy + goneat lint)"
 	@echo "  precommit       Pre-commit checks (fast: fmt, clippy)"
-	@echo "  prepush         Pre-push checks (thorough: fmt, clippy, test, deny)"
+	@echo "  prepush         Pre-push checks (thorough: fmt, clippy, test, deny, version-check)"
 	@echo "  msrv            Verify build+test on MSRV toolchain (core crates)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
@@ -380,7 +380,7 @@ dogfood-cli: ## Run end-to-end CLI dogfooding matrix
 precommit: fmt-check lint ## Run pre-commit checks (fast)
 	@echo "[ok] Pre-commit checks passed"
 
-prepush: check ## Run pre-push checks (thorough)
+prepush: check version-check ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
 
 # -----------------------------------------------------------------------------
@@ -529,18 +529,8 @@ release-preflight: ## Verify all pre-tag requirements (REQUIRED before tagging)
 	@# Check 2: Prepush quality gates
 	@$(MAKE) prepush --silent
 	@echo "[ok] Prepush checks passed"
-	@# Check 3: Version sync
-	@version_file=$$(cat $(VERSION_FILE) 2>/dev/null); \
-	if [ -z "$$version_file" ]; then \
-		echo "[!!] VERSION file not found"; \
-		exit 1; \
-	fi; \
-	cargo_version=$$(grep '^\[workspace\.package\]' Cargo.toml -A 2 | grep '^version' | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d '"'); \
-	if [ "$$version_file" != "$$cargo_version" ]; then \
-		echo "[!!] Version mismatch: VERSION=$$version_file, Cargo.toml=$$cargo_version"; \
-		echo "    Run: make version-sync"; \
-		exit 1; \
-	fi
+	@# Check 3: Version sync (full check: VERSION, Cargo.toml, TypeScript packages)
+	@$(MAKE) version-check --silent
 	@echo "[ok] Version synced"
 	@# Check 4: Release notes exist
 	@version_file=$$(cat $(VERSION_FILE) 2>/dev/null); \
