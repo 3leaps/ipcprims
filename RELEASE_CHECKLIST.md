@@ -150,10 +150,17 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > **Ordering is critical**: TypeScript prebuilds and npm publish run **after** signing and
 > upload are complete. They run from the tag ref, not from main.
 >
-> **First-time npm publish note**: OIDC trusted publishing requires the package to already
-> exist on npm. For a brand-new package (first ever publish), the workflow will fail with
-> `ENEEDAUTH`. In that case, publish the platform packages manually once, then OIDC works
-> for all subsequent releases.
+> **Before running**: verify all six npm packages exist. OIDC trusted publishing cannot
+> create new packages — only update existing ones. If any are missing, do the manual first
+> publish first. See `docs/guides/npm-publishing.md` for the full guide.
+>
+> ```bash
+> npm view @3leaps/ipcprims version 2>/dev/null || echo "MISSING"
+> for pkg in darwin-arm64 linux-x64-gnu linux-x64-musl linux-arm64-gnu win32-x64-msvc; do
+>   result=$(npm view "@3leaps/ipcprims-${pkg}" version 2>/dev/null || echo "MISSING")
+>   echo "@3leaps/ipcprims-${pkg}: ${result}"
+> done
+> ```
 
 - [ ] **TypeScript N-API prebuilds** — run on the tag ref after upload:
   ```bash
@@ -168,8 +175,9 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
   VERSION=$(cat VERSION)
   gh workflow run "TypeScript npm Publish" --ref "v${VERSION}"
   ```
-  The workflow requires a `v*` tag ref for OIDC environment protection.
-  Monitor for the `ENEEDAUTH` failure described above if this is a first publish.
+  If any package is missing from npm, the workflow fails with `E404`. In that case,
+  follow the manual first publish steps in `docs/guides/npm-publishing.md`, then
+  re-run the workflow.
 
 ## 2. Manual Signing (Local Machine)
 

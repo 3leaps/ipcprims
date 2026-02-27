@@ -61,10 +61,12 @@ Purpose:
 
 ### Bindings workflows
 
-- `go-bindings.yml`: builds/updates Go binding prebuilt libs.
+- `go-bindings.yml`: builds/updates Go binding prebuilt libs. Run manually before tagging.
 - `typescript-bindings.yml`: runs the Node/NAPI binding test matrix.
-- `typescript-napi-prebuilds.yml`: builds `.node` prebuilds.
-- `typescript-npm-publish.yml`: publishes to npm (OIDC).
+- `typescript-napi-prebuilds.yml`: builds `.node` prebuilds. Run from tag ref after signing.
+- `typescript-npm-publish.yml`: publishes to npm via OIDC trusted publishing. Run from tag
+  ref after prebuilds complete. Requires all six packages to already exist on npm — see
+  `docs/guides/npm-publishing.md` for first-publish instructions and troubleshooting.
 
 ## Local Equivalents
 
