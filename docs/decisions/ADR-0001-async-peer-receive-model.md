@@ -90,8 +90,11 @@ limits are insufficient against near-max-payload flooding.
 
 ### 5. CONTROL frames remain internal
 
-CONTROL frames are handled internally in the reader task (ping/pong, shutdown) and are not
+Known CONTROL frames are handled internally in the reader task (ping/pong, shutdown) and are not
 delivered via `any_rx` or per-channel receivers, matching the sync peer behavior.
+
+If `allow_unknown_control_messages` is enabled, unknown CONTROL messages MAY be forwarded to
+consumers as CONTROL-channel frames.
 
 ## Consequences
 
