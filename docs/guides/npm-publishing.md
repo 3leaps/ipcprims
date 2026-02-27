@@ -146,6 +146,15 @@ needed again for an existing package.
 
 ## Troubleshooting
 
+### "Cannot publish over previously published versions"
+
+If the workflow fails with this error, the version was already published (either
+manually or by a prior run). The workflow is now idempotent — it skips packages
+that are already at the target version rather than failing.
+
+If you see this error on a run using an older tag (pre-fix), it is safe to ignore.
+The packages are published. Do not re-tag just to get a clean workflow run.
+
 ### E404 on platform package
 
 The package doesn't exist on npm yet. Follow the Manual First Publish steps above.
