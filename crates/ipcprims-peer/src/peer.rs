@@ -69,6 +69,7 @@ pub struct Peer {
     writer: FrameWriter<IpcStream>,
     handshake_result: HandshakeResult,
     client_auth_token: Option<String>,
+    #[cfg_attr(not(unix), allow(dead_code))]
     schema_registry: Option<SchemaRegistryHandle>,
     channel_buffers: HashMap<u16, VecDeque<Frame>>,
     buffered_total_bytes: usize,
@@ -78,7 +79,7 @@ pub struct Peer {
 
 impl Peer {
     /// Create a peer from connected components.
-    #[cfg(unix)]
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) fn from_parts(
         id: String,
         reader: FrameReader<IpcStream>,
@@ -475,7 +476,7 @@ enum ControlDisposition {
     Disconnected(String),
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc;

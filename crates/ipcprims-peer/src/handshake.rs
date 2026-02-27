@@ -782,7 +782,7 @@ fn parse_version(version: &str) -> Result<(u16, u16)> {
     Ok((major, minor))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::io::{Cursor, ErrorKind, Read};
     use std::os::unix::net::UnixStream;

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[cfg(unix)]
+#[cfg_attr(not(unix), allow(unused_imports))]
 use ipcprims_frame::{
     FrameConfig, FrameReader, FrameWriter, COMMAND, DATA, DEFAULT_MAX_PAYLOAD, ERROR, TELEMETRY,
 };
@@ -9,7 +9,7 @@ use ipcprims_frame::{
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
-#[cfg(unix)]
+#[cfg_attr(not(unix), allow(unused_imports))]
 use crate::handshake::handshake_server_with_config;
 use crate::handshake::HandshakeConfig;
 use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
@@ -22,6 +22,7 @@ pub struct PeerListener {
     _unavailable: (),
     supported_channels: Vec<u16>,
     handshake_config: HandshakeConfig,
+    #[cfg_attr(not(unix), allow(dead_code))]
     schema_registry: Option<SchemaRegistryHandle>,
     peer_config: PeerConfig,
     next_peer_id: AtomicU64,

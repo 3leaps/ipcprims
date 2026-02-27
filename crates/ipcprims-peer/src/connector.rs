@@ -1,12 +1,12 @@
 use std::path::Path;
 
-#[cfg(unix)]
+#[cfg_attr(not(unix), allow(unused_imports))]
 use ipcprims_frame::{FrameConfig, FrameReader, FrameWriter, DEFAULT_MAX_PAYLOAD};
 #[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
-#[cfg(unix)]
+#[cfg_attr(not(unix), allow(unused_imports))]
 use crate::handshake::handshake_client_with_config;
 use crate::handshake::HandshakeConfig;
 use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
