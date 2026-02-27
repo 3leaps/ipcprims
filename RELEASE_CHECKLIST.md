@@ -64,30 +64,79 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] Note the annotation `Restore cache failed: go.sum not found` on Go darwin job is a known
       non-fatal warning (the Go bindings dir is a CGo module without a `go.sum` at root)
 
-### Bindings (Pre-Tag) — skip for source-only releases
+### Bindings (Pre-Tag) — do NOT skip if FFI crate changed
 
-> **Note**: These steps apply when releasing binary/FFI artifacts (v0.1.2+).
-> For source-only releases, skip to tagging.
+> **Note**: This section applies whenever `ipcprims-ffi` source has changed since the last
+> release. It is NOT optional for v0.1.2+. The workflow builds fresh prebuilt libs from the
+> current source — the libs committed to `bindings/go/ipcprims/lib/` in the previous release
+> are stale and must be rebuilt.
+>
+> **Do not sign until this is complete.** Signing against a tag that has stale FFI libs means
+> Go consumers get the wrong binaries.
 
-- [ ] **Go bindings prep** (MUST happen before tagging):
-  1. Run `go-bindings.yml` workflow via GitHub Actions (manual dispatch, input: version)
-  2. Workflow builds FFI for all platforms and creates PR with prebuilt libs
-  3. Review and merge the PR
-  4. Tag the **merge commit** (critical: release tag must include Go prebuilt libs)
-- [ ] Go submodule tag: `git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"`
-- [ ] Verify `go test ./...` passes in `bindings/go/ipcprims/`
-- [ ] Verify `npm test` and `npm run typecheck` pass in `bindings/typescript/`
+- [ ] **Verify current libs are stale** (sanity check before running the workflow):
+  ```bash
+  git log --oneline bindings/go/ipcprims/lib/ bindings/go/ipcprims/include/ | head -5
+  # Last commit should match the VERSION you are releasing, not a prior version
+  ```
 
-### Create and Push Tag
+- [ ] **Run Go bindings workflow** (builds fresh FFI libs on all platforms):
+  ```bash
+  VERSION=$(cat VERSION)
+  gh workflow run "Go Bindings (Prep)" -f version="${VERSION}"
+  ```
+  Watch progress:
+  ```bash
+  gh run list --workflow=go-bindings.yml --limit 3
+  gh run watch <run-id>
+  ```
 
-- [ ] Create annotated tag:
+- [ ] **Review and merge the PR** the workflow creates:
+  ```bash
+  VERSION=$(cat VERSION)
+  gh pr list --search "go-bindings/v${VERSION}" --state open
+  ```
+  Confirm the PR actually updates libs across all platforms before merging:
+  - `bindings/go/ipcprims/lib/<platform>/libipcprims_ffi.a` (all platforms)
+  - `bindings/go/ipcprims/lib-shared/<platform>/` (shared libs)
+  - `bindings/go/ipcprims/include/ipcprims.h` (regenerated header)
+
+- [ ] **Wait for CI to pass on the merge commit** — this is the commit you will tag.
+  ```bash
+  gh run list --branch main --limit 3
+  ```
+
+- [ ] **Pull the merge commit locally**:
+  ```bash
+  git pull origin main
+  ```
+
+- [ ] Verify Go bindings pass locally:
+  ```bash
+  cd bindings/go/ipcprims && go test ./... && cd -
+  ```
+
+- [ ] Verify TypeScript bindings pass locally:
+  ```bash
+  cd bindings/typescript && npm test && npm run typecheck && cd -
+  ```
+
+### Create and Push Tags
+
+Both tags must point to the **same commit** — the Go bindings PR merge commit.
+
+- [ ] Create annotated tags:
   ```bash
   VERSION=$(cat VERSION)
   git tag -a "v${VERSION}" -m "v${VERSION}: <brief description of release>"
+  git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"
   ```
-- [ ] Push tag (triggers release workflow):
+  > The Go submodule tag is required so `go get github.com/3leaps/ipcprims/bindings/go/ipcprims@v${VERSION}`
+  > resolves correctly. Without it Go module resolution fails.
+
+- [ ] Push both tags together (triggers release workflow):
   ```bash
-  git push origin "v${VERSION}"
+  git push origin "v${VERSION}" "bindings/go/ipcprims/v${VERSION}"
   ```
 
 ### CI Verification on Tag
@@ -96,10 +145,31 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] Verify CI status is green: `gh run list --branch "v${VERSION}"`
 - [ ] Check release draft has expected artifacts (binaries for all platforms)
 
-### Bindings (Post-Signing) — skip for source-only releases
+### Bindings (Post-Signing) — TypeScript, run AFTER upload
 
-- [ ] **TypeScript N-API prebuilds**: Run `typescript-napi-prebuilds.yml` on the tagged commit
-- [ ] **TypeScript npm publish**: Run `typescript-npm-publish.yml` with OIDC trusted publishing
+> **Ordering is critical**: TypeScript prebuilds and npm publish run **after** signing and
+> upload are complete. They run from the tag ref, not from main.
+>
+> **First-time npm publish note**: OIDC trusted publishing requires the package to already
+> exist on npm. For a brand-new package (first ever publish), the workflow will fail with
+> `ENEEDAUTH`. In that case, publish the platform packages manually once, then OIDC works
+> for all subsequent releases.
+
+- [ ] **TypeScript N-API prebuilds** — run on the tag ref after upload:
+  ```bash
+  VERSION=$(cat VERSION)
+  gh workflow run "TypeScript N-API Prebuilds" --ref "v${VERSION}"
+  gh run list --workflow=typescript-napi-prebuilds.yml --limit 3
+  ```
+  Wait for completion. This builds `.node` binaries and stages npm package directories.
+
+- [ ] **TypeScript npm publish** — run on the tag ref after prebuilds complete:
+  ```bash
+  VERSION=$(cat VERSION)
+  gh workflow run "TypeScript npm Publish" --ref "v${VERSION}"
+  ```
+  The workflow requires a `v*` tag ref for OIDC environment protection.
+  Monitor for the `ENEEDAUTH` failure described above if this is a first publish.
 
 ## 2. Manual Signing (Local Machine)
 
@@ -183,10 +253,18 @@ export IPCPRIMS_GPG_HOMEDIR=/path/to/gpg/homedir  # optional
    ```
    > **Note:** Uses `--clobber` to overwrite existing assets. Safe to rerun.
 
-Or run the full workflow in one command:
+9. **Publish the release** (promotes draft → public):
+   ```bash
+   gh release edit v$(cat VERSION) --draft=false
+   ```
+   > The release is a draft until this step. Do not announce until after this.
+
+Or run the full signing + upload workflow in one command:
 
 ```bash
 make release
+# Then manually publish the draft:
+gh release edit v$(cat VERSION) --draft=false
 ```
 
 ## 3. Post-Release Verification
