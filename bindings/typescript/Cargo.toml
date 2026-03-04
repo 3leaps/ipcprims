@@ -11,6 +11,7 @@ description = "Node-API addon for @3leaps/ipcprims"
 
 [lib]
 crate-type = ["cdylib"]
+test = false
 
 [dependencies]
 napi = { version = "2.16.16", default-features = false, features = ["napi8"] }

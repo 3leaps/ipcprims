@@ -146,3 +146,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use std::io::ErrorKind;
+
+    use ipcprims_frame::COMMAND;
+    use ipcprims_transport::TransportError;
+
+    use super::*;
+    use crate::error::PeerError;
+
+    #[test]
+    fn connect_returns_unsupported_transport_error_on_windows() {
+        let err = match connect(r"\\.\pipe\ipcprims-test", &[COMMAND]) {
+            Ok(_) => panic!(
+                "windows peer transport should be unsupported until named pipes are implemented"
+            ),
+            Err(err) => err,
+        };
+
+        match err {
+            PeerError::Transport(TransportError::Connect { source, .. }) => {
+                assert_eq!(source.kind(), ErrorKind::Unsupported);
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+}

@@ -242,3 +242,56 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use std::io::ErrorKind;
+
+    use ipcprims_transport::TransportError;
+
+    use super::*;
+    use crate::error::PeerError;
+
+    #[test]
+    fn bind_returns_unsupported_transport_error_on_windows() {
+        let err = match PeerListener::bind(r"\\.\pipe\ipcprims-test") {
+            Ok(_) => panic!(
+                "windows peer listener should be unsupported until named pipes are implemented"
+            ),
+            Err(err) => err,
+        };
+
+        match err {
+            PeerError::Transport(TransportError::Bind { source, .. }) => {
+                assert_eq!(source.kind(), ErrorKind::Unsupported);
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn accept_returns_unsupported_transport_error_on_windows() {
+        let listener = PeerListener {
+            _unavailable: (),
+            supported_channels: vec![],
+            handshake_config: HandshakeConfig::default(),
+            schema_registry: None,
+            peer_config: PeerConfig::default(),
+            next_peer_id: AtomicU64::new(1),
+        };
+
+        let err = match listener.accept_with_id("peer-windows") {
+            Ok(_) => {
+                panic!("windows peer accept should be unsupported until named pipes are implemented")
+            }
+            Err(err) => err,
+        };
+
+        match err {
+            PeerError::Transport(TransportError::Accept(source)) => {
+                assert_eq!(source.kind(), ErrorKind::Unsupported);
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+}
