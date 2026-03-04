@@ -75,3 +75,23 @@ Primary local gates:
 - `make prepush`: format + clippy + tests + cargo-deny
 - `make msrv`: core crates build+test on Rust 1.85.0 (excludes NAPI)
 - `make check-windows`: compile-only Windows target checks (no linking)
+
+## Windows Notes
+
+### Toolchain prerequisites
+
+Windows MSVC builds require:
+
+- Rust toolchain (`rustup` + `cargo`)
+- Visual Studio Build Tools (or full Visual Studio) with:
+  - **MSVC C++ build tools**
+  - **Windows SDK**
+
+### `make bootstrap` on Windows (MSVC linker)
+
+Some Windows shells (notably Git Bash / MSYS2 / Git-for-Windows) can place a non-MSVC `link.exe`
+earlier on `PATH`. Rust MSVC builds must use **MSVC** `link.exe`.
+
+To make bootstrap deterministic, [`Makefile`](../Makefile:114) uses `vswhere.exe` to locate
+`vcvars64.bat` (see [`vcvars64-path.ps1`](../scripts/windows/vcvars64-path.ps1:1)) and runs
+`cargo install ...` steps inside `cmd.exe` with the MSVC environment loaded.

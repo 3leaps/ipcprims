@@ -28,14 +28,14 @@ pub fn connect_with_config(
     {
         let _ = (channels, handshake_config, schema_registry, peer_config);
         let path = path.as_ref().to_path_buf();
-        return Err(ipcprims_transport::TransportError::Connect {
+        Err(ipcprims_transport::TransportError::Connect {
             path,
             source: std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
             ),
         }
-        .into());
+        .into())
     }
 
     #[cfg(unix)]

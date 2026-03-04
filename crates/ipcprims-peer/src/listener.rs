@@ -34,14 +34,14 @@ impl PeerListener {
         #[cfg(not(unix))]
         {
             let path = path.as_ref().to_path_buf();
-            return Err(ipcprims_transport::TransportError::Bind {
+            Err(ipcprims_transport::TransportError::Bind {
                 path,
                 source: std::io::Error::new(
                     std::io::ErrorKind::Unsupported,
-                    "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+                    "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
                 ),
             }
-            .into());
+            .into())
         }
 
         #[cfg(unix)]
@@ -99,11 +99,11 @@ impl PeerListener {
         #[cfg(not(unix))]
         {
             let _ = peer_id;
-            return Err(ipcprims_transport::TransportError::Accept(std::io::Error::new(
+            Err(ipcprims_transport::TransportError::Accept(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.0)",
+                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
             ))
-            .into());
+            .into())
         }
 
         #[cfg(unix)]
