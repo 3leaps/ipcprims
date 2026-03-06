@@ -23,7 +23,8 @@ Purpose:
 Notes:
 
 - CI sets `RUSTFLAGS="-Dwarnings"` to keep portability regressions visible.
-- Windows is validated via a dedicated `windows-cross-check` job (compile-only).
+- Windows is currently validated in CI via `windows-cross-check` (compile-only); full Windows
+  workspace test jobs are being expanded in v0.2.1 follow-on CI updates.
 
 ### `msrv-matrix.yml` (tag-triggered MSRV confirmation)
 
@@ -77,6 +78,12 @@ Primary local gates:
 - `make check-windows`: compile-only Windows target checks (no linking)
 
 ## Windows Notes
+
+### Current transport status
+
+- Sync Windows named-pipe transport is now implemented in the Rust transport/peer layers and
+  validated locally on Windows.
+- Async Windows named-pipe transport and CI matrix expansion remain in-progress for v0.2.1.
 
 ### Toolchain prerequisites
 

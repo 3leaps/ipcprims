@@ -25,8 +25,8 @@ You're building software where multiple processes need to communicate locally â€
 - **Framed-by-default**: Every message is length-prefixed with type tags. No partial reads, no buffer management in user code.
 - **Schema-validated (opt-in)**: Validate messages against JSON Schema 2020-12 at the transport boundary. Catch contract violations before they become bugs.
 - **Multiplexed channels**: Separate command and data streams over a single transport. No need for multiple sockets per peer.
-- **Cross-platform**: Unix domain sockets on Linux/macOS today; Windows named pipes are planned for v0.2.1.
-- **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix-only in v0.2.0; Windows async deferred to v0.2.1).
+- **Cross-platform**: Unix domain sockets on Linux/macOS and Windows named pipes.
+- **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix async available; Windows async transport is in-progress for v0.2.1).
 - **Library-first**: Embed directly in Rust, Go, Python, or TypeScript. CLI is a diagnostic/demo tool.
 
 ### Framed-by-Default: The Core Difference
@@ -174,7 +174,7 @@ This exercises `echo`, `send`, `listen`, `info`, `doctor`, and `envinfo` with sc
 
 ### ipcprims-transport
 
-Cross-platform transport abstraction. Unix domain sockets on Linux/macOS today; Windows named pipes are planned for v0.2.1.
+Cross-platform transport abstraction. Unix domain sockets on Linux/macOS and named pipes on Windows.
 
 ### ipcprims-frame
 
@@ -232,7 +232,7 @@ TypeScript bindings scaffold is provided at `bindings/typescript` using Node-API
 | Linux arm64 (glibc) | `aarch64-unknown-linux-gnu`  | UDS (abstract)   | Primary          |
 | Linux arm64 (musl)  | `aarch64-unknown-linux-musl` | UDS (abstract)   | Primary          |
 | macOS arm64         | `aarch64-apple-darwin`       | UDS (filesystem) | Supported        |
-| Windows x64         | `x86_64-pc-windows-msvc`     | Named pipes      | Planned (v0.2.1) |
+| Windows x64         | `x86_64-pc-windows-msvc`     | Named pipes      | Supported (sync) |
 
 ## Development
 
