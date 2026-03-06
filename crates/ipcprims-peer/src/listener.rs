@@ -7,6 +7,8 @@ use ipcprims_frame::{
 };
 #[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
+#[cfg(windows)]
+use ipcprims_transport::NamedPipeListener;
 
 use crate::error::Result;
 #[cfg_attr(not(unix), allow(unused_imports))]
@@ -18,8 +20,8 @@ use crate::peer::{Peer, PeerConfig, SchemaRegistryHandle};
 pub struct PeerListener {
     #[cfg(unix)]
     socket: UnixDomainSocket,
-    #[cfg(not(unix))]
-    _unavailable: (),
+    #[cfg(windows)]
+    socket: NamedPipeListener,
     supported_channels: Vec<u16>,
     handshake_config: HandshakeConfig,
     #[cfg_attr(not(unix), allow(dead_code))]
@@ -31,22 +33,22 @@ pub struct PeerListener {
 impl PeerListener {
     /// Bind to a Unix domain socket path.
     pub fn bind(path: impl AsRef<Path>) -> Result<Self> {
-        #[cfg(not(unix))]
-        {
-            let path = path.as_ref().to_path_buf();
-            Err(ipcprims_transport::TransportError::Bind {
-                path,
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
-                ),
-            }
-            .into())
-        }
-
         #[cfg(unix)]
         {
             let socket = UnixDomainSocket::bind(path)?;
+            Ok(Self {
+                socket,
+                supported_channels: vec![COMMAND, DATA, TELEMETRY, ERROR],
+                handshake_config: HandshakeConfig::default(),
+                schema_registry: None,
+                peer_config: PeerConfig::default(),
+                next_peer_id: AtomicU64::new(1),
+            })
+        }
+
+        #[cfg(windows)]
+        {
+            let socket = NamedPipeListener::bind(path)?;
             Ok(Self {
                 socket,
                 supported_channels: vec![COMMAND, DATA, TELEMETRY, ERROR],
@@ -96,17 +98,42 @@ impl PeerListener {
 
     /// Accept next connection and use explicit peer id.
     pub fn accept_with_id(&self, peer_id: &str) -> Result<Peer> {
-        #[cfg(not(unix))]
+        #[cfg(unix)]
         {
-            let _ = peer_id;
-            Err(ipcprims_transport::TransportError::Accept(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
+            let stream = self.socket.accept()?;
+            let reader_stream = stream.try_clone()?;
+
+            let frame_config = FrameConfig {
+                max_payload_size: self.handshake_config.max_handshake_payload,
+                read_timeout: Some(self.handshake_config.timeout),
+                write_timeout: Some(self.handshake_config.timeout),
+            };
+
+            let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
+            let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
+
+            let handshake = handshake_server_with_config(
+                &mut reader,
+                &mut writer,
+                &self.supported_channels,
+                peer_id,
+                &self.handshake_config,
+            )?;
+            // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
+            reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+            writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+
+            Ok(Peer::from_parts(
+                peer_id.to_string(),
+                reader,
+                writer,
+                handshake,
+                self.schema_registry.clone(),
+                self.peer_config.clone(),
             ))
-            .into())
         }
 
-        #[cfg(unix)]
+        #[cfg(windows)]
         {
             let stream = self.socket.accept()?;
             let reader_stream = stream.try_clone()?;
@@ -144,12 +171,12 @@ impl PeerListener {
 
     /// Bound socket path.
     pub fn path(&self) -> &Path {
-        #[cfg(not(unix))]
+        #[cfg(unix)]
         {
-            unreachable!()
+            self.socket.path()
         }
 
-        #[cfg(unix)]
+        #[cfg(windows)]
         {
             self.socket.path()
         }
@@ -245,53 +272,48 @@ mod tests {
 
 #[cfg(all(test, windows))]
 mod windows_tests {
-    use std::io::ErrorKind;
+    use std::thread;
 
-    use ipcprims_transport::TransportError;
+    use ipcprims_frame::COMMAND;
 
     use super::*;
-    use crate::error::PeerError;
+    use crate::connector::connect;
 
-    #[test]
-    fn bind_returns_unsupported_transport_error_on_windows() {
-        let err = match PeerListener::bind(r"\\.\pipe\ipcprims-test") {
-            Ok(_) => panic!(
-                "windows peer listener should be unsupported until named pipes are implemented"
-            ),
-            Err(err) => err,
-        };
-
-        match err {
-            PeerError::Transport(TransportError::Bind { source, .. }) => {
-                assert_eq!(source.kind(), ErrorKind::Unsupported);
-            }
-            other => panic!("unexpected error variant: {other:?}"),
-        }
+    fn make_pipe_name(tag: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(format!(
+            r"\\.\pipe\ipcprims-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ))
     }
 
     #[test]
-    fn accept_returns_unsupported_transport_error_on_windows() {
-        let listener = PeerListener {
-            _unavailable: (),
-            supported_channels: vec![],
-            handshake_config: HandshakeConfig::default(),
-            schema_registry: None,
-            peer_config: PeerConfig::default(),
-            next_peer_id: AtomicU64::new(1),
-        };
+    fn bind_succeeds_on_named_pipe() {
+        let pipe = make_pipe_name("bind");
+        let listener = PeerListener::bind(&pipe).expect("listener should bind named pipe");
+        let path = listener.path().to_string_lossy().to_string();
+        assert!(path.starts_with(r"\\.\pipe\"));
+    }
 
-        let err = match listener.accept_with_id("peer-windows") {
-            Ok(_) => {
-                panic!("windows peer accept should be unsupported until named pipes are implemented")
-            }
-            Err(err) => err,
-        };
+    #[test]
+    fn accept_roundtrip_on_named_pipe() {
+        let pipe = make_pipe_name("accept");
+        let listener = PeerListener::bind(&pipe).expect("listener should bind named pipe");
 
-        match err {
-            PeerError::Transport(TransportError::Accept(source)) => {
-                assert_eq!(source.kind(), ErrorKind::Unsupported);
-            }
-            other => panic!("unexpected error variant: {other:?}"),
-        }
+        let server = thread::spawn(move || {
+            let mut peer = listener.accept().expect("listener should accept");
+            let frame = peer.recv_on(COMMAND).expect("should receive command frame");
+            peer.send(COMMAND, frame.payload.as_ref())
+                .expect("should echo command");
+        });
+
+        let mut client = connect(&pipe, &[COMMAND]).expect("client should connect");
+        let response = client.request(b"hello-listener").expect("request should succeed");
+        assert_eq!(response.payload.as_ref(), b"hello-listener");
+
+        server.join().expect("server thread should complete");
     }
 }

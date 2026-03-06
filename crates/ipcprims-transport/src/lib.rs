@@ -12,12 +12,16 @@ pub mod traits;
 
 #[cfg(unix)]
 pub mod uds;
+#[cfg(windows)]
+pub mod npipes;
 
 pub use error::{Result, TransportError};
 pub use traits::IpcStream;
 
 #[cfg(unix)]
 pub use uds::UnixDomainSocket;
+#[cfg(windows)]
+pub use npipes::{NamedPipeListener, NamedPipeStream};
 
 #[cfg(all(unix, feature = "async"))]
 pub mod async_uds;

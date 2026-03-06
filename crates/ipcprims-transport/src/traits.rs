@@ -1,6 +1,8 @@
 use std::io::{Read, Write};
 
 use crate::error::Result;
+#[cfg(windows)]
+use crate::npipes::NamedPipeStream;
 
 /// A connected IPC stream — implements Read + Write.
 ///
@@ -15,10 +17,8 @@ pub struct IpcStream {
 enum IpcStreamInner {
     #[cfg(unix)]
     Unix(std::os::unix::net::UnixStream),
-    // Placeholder so the enum is non-empty on Windows and match blocks compile.
-    // Cannot be constructed — replaced by a real NamedPipe variant in v0.2.0.
-    #[cfg(not(unix))]
-    Unavailable,
+    #[cfg(windows)]
+    NamedPipe(NamedPipeStream),
 }
 
 #[cfg_attr(not(unix), allow(unused_variables))]
@@ -27,8 +27,8 @@ impl Read for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.read(buf),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => stream.read(buf),
         }
     }
 }
@@ -39,8 +39,8 @@ impl Write for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.write(buf),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => stream.write(buf),
         }
     }
 
@@ -48,8 +48,8 @@ impl Write for IpcStream {
         match &mut self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.flush(),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => stream.flush(),
         }
     }
 }
@@ -64,13 +64,21 @@ impl IpcStream {
         }
     }
 
+    /// Create an IpcStream from a Windows named pipe stream.
+    #[cfg(windows)]
+    pub(crate) fn from_named_pipe(stream: NamedPipeStream) -> Self {
+        Self {
+            inner: IpcStreamInner::NamedPipe(stream),
+        }
+    }
+
     /// Set read timeout on the underlying stream.
     pub fn set_read_timeout(&self, timeout: Option<std::time::Duration>) -> Result<()> {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.set_read_timeout(timeout).map_err(Into::into),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => stream.set_read_timeout(timeout),
         }
     }
 
@@ -79,8 +87,8 @@ impl IpcStream {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(stream) => stream.set_write_timeout(timeout).map_err(Into::into),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => stream.set_write_timeout(timeout),
         }
     }
 
@@ -92,8 +100,11 @@ impl IpcStream {
                 let cloned = stream.try_clone()?;
                 Ok(Self::from_unix(cloned))
             }
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(stream) => {
+                let cloned = stream.try_clone()?;
+                Ok(Self::from_named_pipe(cloned))
+            }
         }
     }
 
@@ -149,8 +160,10 @@ impl std::fmt::Debug for IpcStream {
         match &self.inner {
             #[cfg(unix)]
             IpcStreamInner::Unix(_) => f.debug_struct("IpcStream").field("type", &"unix").finish(),
-            #[cfg(not(unix))]
-            IpcStreamInner::Unavailable => unreachable!(),
+            #[cfg(windows)]
+            IpcStreamInner::NamedPipe(_) => {
+                f.debug_struct("IpcStream").field("type", &"named-pipe").finish()
+            }
         }
     }
 }

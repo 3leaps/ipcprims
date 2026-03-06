@@ -4,6 +4,8 @@ use std::path::Path;
 use ipcprims_frame::{FrameConfig, FrameReader, FrameWriter, DEFAULT_MAX_PAYLOAD};
 #[cfg(unix)]
 use ipcprims_transport::UnixDomainSocket;
+#[cfg(windows)]
+use ipcprims_transport::NamedPipeStream;
 
 use crate::error::Result;
 #[cfg_attr(not(unix), allow(unused_imports))]
@@ -24,23 +26,40 @@ pub fn connect_with_config(
     schema_registry: Option<SchemaRegistryHandle>,
     peer_config: Option<PeerConfig>,
 ) -> Result<Peer> {
-    #[cfg(not(unix))]
-    {
-        let _ = (channels, handshake_config, schema_registry, peer_config);
-        let path = path.as_ref().to_path_buf();
-        Err(ipcprims_transport::TransportError::Connect {
-            path,
-            source: std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "ipcprims-peer requires Unix domain sockets (Windows support planned in v0.2.1)",
-            ),
-        }
-        .into())
-    }
-
     #[cfg(unix)]
     {
         let stream = UnixDomainSocket::connect(path)?;
+        let reader_stream = stream.try_clone()?;
+
+        let frame_config = FrameConfig {
+            max_payload_size: handshake_config.max_handshake_payload,
+            read_timeout: Some(handshake_config.timeout),
+            write_timeout: Some(handshake_config.timeout),
+        };
+
+        let mut reader = FrameReader::with_config_ipc(reader_stream, frame_config.clone())?;
+        let mut writer = FrameWriter::with_config_ipc(stream, frame_config)?;
+
+        let handshake =
+            handshake_client_with_config(&mut reader, &mut writer, channels, handshake_config)?;
+        // Handshake uses a tighter pre-auth payload budget; restore runtime defaults after auth.
+        reader.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+        writer.set_max_payload_size(DEFAULT_MAX_PAYLOAD);
+        let id = handshake.peer_id.clone();
+
+        Ok(Peer::from_parts(
+            id,
+            reader,
+            writer,
+            handshake,
+            schema_registry,
+            peer_config.unwrap_or_default(),
+        ))
+    }
+
+    #[cfg(windows)]
+    {
+        let stream = NamedPipeStream::connect(path)?;
         let reader_stream = stream.try_clone()?;
 
         let frame_config = FrameConfig {
@@ -149,28 +168,40 @@ mod tests {
 
 #[cfg(all(test, windows))]
 mod windows_tests {
-    use std::io::ErrorKind;
+    use std::thread;
 
     use ipcprims_frame::COMMAND;
-    use ipcprims_transport::TransportError;
 
     use super::*;
-    use crate::error::PeerError;
+    use crate::listener::PeerListener;
+
+    fn make_pipe_name(tag: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(format!(
+            r"\\.\pipe\ipcprims-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ))
+    }
 
     #[test]
-    fn connect_returns_unsupported_transport_error_on_windows() {
-        let err = match connect(r"\\.\pipe\ipcprims-test", &[COMMAND]) {
-            Ok(_) => panic!(
-                "windows peer transport should be unsupported until named pipes are implemented"
-            ),
-            Err(err) => err,
-        };
+    fn connect_roundtrip_on_named_pipe() {
+        let pipe = make_pipe_name("connect");
+        let listener = PeerListener::bind(&pipe).expect("listener should bind named pipe");
 
-        match err {
-            PeerError::Transport(TransportError::Connect { source, .. }) => {
-                assert_eq!(source.kind(), ErrorKind::Unsupported);
-            }
-            other => panic!("unexpected error variant: {other:?}"),
-        }
+        let server = thread::spawn(move || {
+            let mut peer = listener.accept().expect("listener should accept");
+            let frame = peer.recv_on(COMMAND).expect("should receive command frame");
+            peer.send(COMMAND, frame.payload.as_ref())
+                .expect("should echo command");
+        });
+
+        let mut client = connect(&pipe, &[COMMAND]).expect("client should connect");
+        let response = client.request(b"hello-windows").expect("request should succeed");
+        assert_eq!(response.payload.as_ref(), b"hello-windows");
+
+        server.join().expect("server thread should complete");
     }
 }
