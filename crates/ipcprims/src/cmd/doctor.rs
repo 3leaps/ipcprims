@@ -116,16 +116,21 @@ fn platform_transport_check() -> CheckResult {
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        // v0.1.0 transport currently targets Unix domain sockets only.
-        // This explicit capability probe keeps doctor fail-closed on unsupported
-        // platforms instead of emitting an ambiguous warning.
+        CheckResult {
+            name: "platform_transport".to_string(),
+            status: CheckStatus::Pass,
+            detail: "Windows named pipes available".to_string(),
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
         CheckResult {
             name: "platform_transport".to_string(),
             status: CheckStatus::Fail,
-            detail: "native non-Unix transport backend unavailable (named pipes not implemented)"
-                .to_string(),
+            detail: "native transport backend unavailable on this platform".to_string(),
         }
     }
 }
@@ -161,7 +166,34 @@ fn temp_dir_writable_check() -> CheckResult {
         }
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use ipcprims_transport::NamedPipeListener;
+
+        let pipe_name = format!(
+            r"\\.\pipe\ipcprims-doctor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        );
+
+        match NamedPipeListener::bind(&pipe_name) {
+            Ok(_) => CheckResult {
+                name: "temp_dir_writable".to_string(),
+                status: CheckStatus::Pass,
+                detail: "named-pipe listener initialization succeeded".to_string(),
+            },
+            Err(err) => CheckResult {
+                name: "temp_dir_writable".to_string(),
+                status: CheckStatus::Fail,
+                detail: format!("named-pipe listener initialization failed: {err}"),
+            },
+        }
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         CheckResult {
             name: "temp_dir_writable".to_string(),
