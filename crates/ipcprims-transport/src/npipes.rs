@@ -485,10 +485,13 @@ mod tests {
     fn write_timeout_setter_and_clone_propagate() {
         let pipe = make_pipe_name("write-timeout");
         let listener = NamedPipeListener::bind(&pipe).expect("listener should bind");
+        let (tx, rx) = mpsc::channel::<()>();
 
         let server = thread::spawn(move || {
             let _stream = listener.accept().expect("listener should accept");
-            thread::sleep(Duration::from_millis(75));
+            // Keep server side connected but intentionally not reading to create
+            // backpressure and force client write timeout behavior.
+            let _ = rx.recv_timeout(Duration::from_secs(3));
         });
 
         let stream = NamedPipeStream::connect_raw(&pipe).expect("client should connect");
@@ -501,6 +504,28 @@ mod tests {
             .set_write_timeout(Some(Duration::from_millis(25)))
             .expect("timeout setter on clone should succeed");
 
+        let mut writer = cloned;
+        let chunk = vec![0x5Au8; 32 * 1024];
+        let mut observed_timeout = false;
+
+        // Keep writing until pipe buffers fill and overlapped write hits timeout.
+        for _ in 0..512 {
+            match writer.write(&chunk) {
+                Ok(_) => continue,
+                Err(err) => {
+                    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+                    observed_timeout = true;
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            observed_timeout,
+            "expected cloned stream write path to observe TimedOut under backpressure"
+        );
+
+        let _ = tx.send(());
         server.join().expect("server thread should complete");
     }
 }
