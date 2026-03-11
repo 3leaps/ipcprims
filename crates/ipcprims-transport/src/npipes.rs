@@ -437,6 +437,7 @@ impl NamedPipeListener {
 #[cfg(all(test, windows))]
 mod tests {
     use std::sync::mpsc;
+    use std::sync::atomic::Ordering;
     use std::thread;
     use std::time::Duration;
 
@@ -527,6 +528,47 @@ mod tests {
 
         let _ = tx.send(());
         server.join().expect("server thread should complete");
+    }
+
+    #[test]
+    fn timeout_setters_support_reset_to_infinite() {
+        let pipe = make_pipe_name("timeout-reset");
+        let listener = NamedPipeListener::bind(&pipe).expect("listener should bind");
+        let (tx, rx) = mpsc::channel::<()>();
+
+        let server = thread::spawn(move || {
+            let _stream = listener.accept().expect("listener should accept");
+            let _ = rx.recv_timeout(Duration::from_secs(2));
+        });
+
+        let stream = NamedPipeStream::connect_raw(&pipe).expect("client should connect");
+        stream
+            .set_read_timeout(Some(Duration::from_millis(25)))
+            .expect("read timeout setter should succeed");
+        stream
+            .set_write_timeout(Some(Duration::from_millis(25)))
+            .expect("write timeout setter should succeed");
+
+        stream
+            .set_read_timeout(None)
+            .expect("read timeout reset should succeed");
+        stream
+            .set_write_timeout(None)
+            .expect("write timeout reset should succeed");
+
+        assert_eq!(stream.read_timeout_ms.load(Ordering::Relaxed), INFINITE);
+        assert_eq!(stream.write_timeout_ms.load(Ordering::Relaxed), INFINITE);
+
+        let _ = tx.send(());
+        server.join().expect("server thread should complete");
+    }
+
+    #[test]
+    fn duration_to_timeout_ms_clamps_large_values() {
+        let huge = Duration::from_secs(u64::MAX / 2);
+        assert_eq!(duration_to_timeout_ms(Some(huge)), MAX_TIMEOUT_MS);
+        assert_eq!(duration_to_timeout_ms(None), INFINITE);
+        assert_eq!(duration_to_timeout_ms(Some(Duration::from_nanos(1))), 1);
     }
 }
 

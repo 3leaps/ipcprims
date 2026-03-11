@@ -26,7 +26,7 @@ You're building software where multiple processes need to communicate locally â€
 - **Schema-validated (opt-in)**: Validate messages against JSON Schema 2020-12 at the transport boundary. Catch contract violations before they become bugs.
 - **Multiplexed channels**: Separate command and data streams over a single transport. No need for multiple sockets per peer.
 - **Cross-platform**: Unix domain sockets on Linux/macOS and Windows named pipes.
-- **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix async available; Windows async transport is in-progress for v0.2.1).
+- **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag (Unix async available; Windows async transport is in-progress for v0.2.1; Windows sync timeout semantics are enforced via overlapped I/O).
 - **Library-first**: Embed directly in Rust, Go, Python, or TypeScript. CLI is a diagnostic/demo tool.
 
 ### Framed-by-Default: The Core Difference
@@ -174,7 +174,7 @@ This exercises `echo`, `send`, `listen`, `info`, `doctor`, and `envinfo` with sc
 
 ### ipcprims-transport
 
-Cross-platform transport abstraction. Unix domain sockets on Linux/macOS and named pipes on Windows.
+Cross-platform transport abstraction. Unix domain sockets on Linux/macOS and named pipes on Windows. On Windows sync transport, read/write timeouts are enforced with overlapped I/O and cancellation.
 
 ### ipcprims-frame
 
