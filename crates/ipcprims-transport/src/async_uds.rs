@@ -1,7 +1,6 @@
 //! Tokio async Unix domain socket transport (Unix only).
 //!
 //! These types are intentionally gated behind `#[cfg(all(unix, feature = "async"))]`.
-//! v0.2.0 async support is Unix-only; Windows async named pipes are planned for v0.2.1+.
 
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -33,13 +32,8 @@ impl AsyncIpcStream {
     }
 
     /// Split into owned read/write halves for concurrent driving.
-    pub fn into_split(
-        self,
-    ) -> (
-        tokio::net::unix::OwnedReadHalf,
-        tokio::net::unix::OwnedWriteHalf,
-    ) {
-        self.inner.into_split()
+    pub fn into_split(self) -> (tokio::io::ReadHalf<Self>, tokio::io::WriteHalf<Self>) {
+        tokio::io::split(self)
     }
 
     /// Access the underlying Tokio stream by reference.

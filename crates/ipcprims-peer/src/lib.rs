@@ -10,11 +10,11 @@ pub mod handshake;
 pub mod listener;
 pub mod peer;
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub mod async_connector;
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub mod async_listener;
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub mod async_peer;
 
 pub use connector::{connect, connect_with_config};
@@ -30,9 +30,9 @@ pub use handshake::{
 pub use listener::PeerListener;
 pub use peer::{Peer, PeerConfig};
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub use async_connector::{async_connect, async_connect_with_config};
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub use async_listener::AsyncPeerListener;
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub use async_peer::{AnyReceiver, AsyncPeer, AsyncPeerRx, AsyncPeerTx, ChannelReceiver};

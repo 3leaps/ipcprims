@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use ipcprims_transport::AsyncUnixDomainSocket;
+#[cfg(windows)]
+use ipcprims_transport::AsyncNamedPipeSocket as AsyncTransportSocket;
+#[cfg(unix)]
+use ipcprims_transport::AsyncUnixDomainSocket as AsyncTransportSocket;
 use tokio_util::sync::CancellationToken;
 
 use crate::async_peer::{build_async_peer_with_cancel, AsyncPeer};
@@ -30,7 +33,7 @@ pub async fn async_connect_with_config(
     peer_config: Option<PeerConfig>,
     cancel: Option<CancellationToken>,
 ) -> Result<AsyncPeer> {
-    let stream = AsyncUnixDomainSocket::connect(path).await?;
+    let stream = AsyncTransportSocket::connect(path).await?;
     let (mut reader, mut writer) = stream.into_split();
 
     let handshake =

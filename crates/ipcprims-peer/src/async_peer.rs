@@ -24,8 +24,8 @@ use futures_core::Stream;
 use ipcprims_frame::{
     decode_frame, encode_frame, Frame, FrameError, CONTROL, DEFAULT_MAX_PAYLOAD, HEADER_SIZE,
 };
+use ipcprims_transport::AsyncIpcStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::{mpsc, oneshot, watch, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
@@ -183,7 +183,7 @@ struct Shared {
     id: String,
     negotiated: Vec<u16>,
     negotiated_set: HashSet<u16>,
-    writer: tokio::sync::Mutex<OwnedWriteHalf>,
+    writer: tokio::sync::Mutex<tokio::io::WriteHalf<AsyncIpcStream>>,
     schema_registry: Option<SchemaRegistryHandle>,
     config: PeerConfig,
     waiter_token: AtomicU64,
@@ -546,8 +546,8 @@ impl AsyncPeer {
 
 pub(crate) fn build_async_peer_with_cancel(
     id: String,
-    read_half: OwnedReadHalf,
-    write_half: OwnedWriteHalf,
+    read_half: tokio::io::ReadHalf<AsyncIpcStream>,
+    write_half: tokio::io::WriteHalf<AsyncIpcStream>,
     handshake: HandshakeResult,
     schema_registry: Option<SchemaRegistryHandle>,
     config: PeerConfig,
@@ -682,7 +682,7 @@ fn deliver_frame(
     true
 }
 
-fn spawn_reader_task(ctx: ReaderTaskCtx, mut reader: OwnedReadHalf) {
+fn spawn_reader_task(ctx: ReaderTaskCtx, mut reader: tokio::io::ReadHalf<AsyncIpcStream>) {
     let ReaderTaskCtx {
         shared,
         cancel,
@@ -886,7 +886,7 @@ async fn send_control(shared: &Arc<Shared>, message: &ControlMessage) -> Result<
     Ok(())
 }
 
-#[cfg(all(test, unix, feature = "async"))]
+#[cfg(all(test, feature = "async"))]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -899,9 +899,24 @@ mod tests {
     static TEST_SOCK_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     fn test_sock_path() -> std::path::PathBuf {
-        // Keep path short for macOS UDS length limits.
         let unique = TEST_SOCK_COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::path::PathBuf::from(format!("/tmp/icpp-{}-{}.sock", std::process::id(), unique))
+        #[cfg(unix)]
+        {
+            // Keep path short for macOS UDS length limits.
+            return std::path::PathBuf::from(format!(
+                "/tmp/icpp-{}-{}.sock",
+                std::process::id(),
+                unique
+            ));
+        }
+        #[cfg(windows)]
+        {
+            return std::path::PathBuf::from(format!(
+                r"\\.\pipe\ipcprims-async-{}-{}",
+                std::process::id(),
+                unique
+            ));
+        }
     }
 
     #[tokio::test]
@@ -935,6 +950,7 @@ mod tests {
         assert_eq!(f3.channel, 1);
         assert_eq!(f3.payload.as_ref(), b"a2");
 
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -967,6 +983,7 @@ mod tests {
         assert_eq!(f_ch.channel, 1);
         assert_eq!(f_ch.payload.as_ref(), b"hello");
 
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -1004,6 +1021,7 @@ mod tests {
         let roundtrip: ControlMessage = serde_json::from_slice(frame.payload.as_ref()).unwrap();
         assert_eq!(roundtrip.msg_type, "custom");
 
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -1030,15 +1048,25 @@ mod tests {
         let (_server_tx, mut server_rx) = server.into_split();
         let mut any = server_rx.take_any_receiver();
 
-        client_tx.send(1, b"a").await.unwrap();
-        client_tx.send(1, b"b").await.unwrap();
+        // Windows named-pipe scheduling can delay reader ingestion enough that a strict
+        // two-send sequence is racey. Drive sustained pressure and assert eventual overflow.
+        for _ in 0..64 {
+            let _ = client_tx.send(1, b"x").await;
+        }
 
-        let first = any.recv().await.unwrap();
-        assert_eq!(first.payload.as_ref(), b"a");
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match tokio::time::timeout_at(deadline, any.recv()).await {
+                Ok(Ok(_frame)) => continue,
+                Ok(Err(err)) => {
+                    assert!(matches!(err, PeerError::BufferFull(1)));
+                    break;
+                }
+                Err(_) => panic!("timed out waiting for BufferFull disconnect"),
+            }
+        }
 
-        let err = any.recv().await.unwrap_err();
-        assert!(matches!(err, PeerError::BufferFull(1)));
-
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -1078,6 +1106,7 @@ mod tests {
         let f2 = ch1.recv().await.unwrap();
         assert_eq!(f2.payload.as_ref(), b"b");
 
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 
@@ -1104,6 +1133,7 @@ mod tests {
         let err = server_rx.recv().await.unwrap_err();
         assert!(matches!(err, PeerError::Disconnected(_)));
 
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
     }
 

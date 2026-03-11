@@ -3,14 +3,14 @@ use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 use bytes::BytesMut;
 use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{PeerError, Result};
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 use ipcprims_frame::HEADER_SIZE;
 
 const MAX_HANDSHAKE_CHANNELS: usize = 256;
@@ -323,7 +323,7 @@ fn send_control_json<T: Serialize, W: Write>(writer: &mut FrameWriter<W>, value:
     Ok(())
 }
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 async fn send_control_json_async<W: tokio::io::AsyncWrite + Unpin>(
     writer: &mut W,
     value: &impl Serialize,
@@ -445,7 +445,7 @@ fn recv_control_payload<R: Read>(
     }
 }
 
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 async fn recv_control_payload_async<R: tokio::io::AsyncRead + Unpin>(
     reader: &mut R,
     deadline: Instant,
@@ -521,7 +521,7 @@ async fn recv_control_payload_async<R: tokio::io::AsyncRead + Unpin>(
 }
 
 /// Perform client-side handshake (async) using explicit configuration.
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub async fn async_handshake_client_with_config<R, W>(
     reader: &mut R,
     writer: &mut W,
@@ -599,7 +599,7 @@ where
 }
 
 /// Perform server-side handshake (async) using explicit configuration.
-#[cfg(all(unix, feature = "async"))]
+#[cfg(feature = "async")]
 pub async fn async_handshake_server_with_config<R, W>(
     reader: &mut R,
     writer: &mut W,

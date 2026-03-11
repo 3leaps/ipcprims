@@ -10,20 +10,25 @@
 pub mod error;
 pub mod traits;
 
-#[cfg(unix)]
-pub mod uds;
 #[cfg(windows)]
 pub mod npipes;
+#[cfg(unix)]
+pub mod uds;
 
 pub use error::{Result, TransportError};
 pub use traits::IpcStream;
 
-#[cfg(unix)]
-pub use uds::UnixDomainSocket;
 #[cfg(windows)]
 pub use npipes::{NamedPipeListener, NamedPipeStream};
+#[cfg(unix)]
+pub use uds::UnixDomainSocket;
 
+#[cfg(all(windows, feature = "async"))]
+pub mod async_npipes;
 #[cfg(all(unix, feature = "async"))]
 pub mod async_uds;
+
+#[cfg(all(windows, feature = "async"))]
+pub use async_npipes::{AsyncIpcStream, AsyncNamedPipeSocket};
 #[cfg(all(unix, feature = "async"))]
 pub use async_uds::{AsyncIpcStream, AsyncUnixDomainSocket};

@@ -2,7 +2,10 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ipcprims_frame::{COMMAND, DATA, ERROR, TELEMETRY};
-use ipcprims_transport::AsyncUnixDomainSocket;
+#[cfg(windows)]
+use ipcprims_transport::AsyncNamedPipeSocket as AsyncTransportSocket;
+#[cfg(unix)]
+use ipcprims_transport::AsyncUnixDomainSocket as AsyncTransportSocket;
 use tokio_util::sync::CancellationToken;
 
 use crate::async_peer::{build_async_peer_with_cancel, AsyncPeer};
@@ -12,7 +15,7 @@ use crate::peer::{PeerConfig, SchemaRegistryHandle};
 
 /// Listens for and accepts peer connections (async).
 pub struct AsyncPeerListener {
-    socket: AsyncUnixDomainSocket,
+    socket: AsyncTransportSocket,
     supported_channels: Vec<u16>,
     handshake_config: HandshakeConfig,
     schema_registry: Option<SchemaRegistryHandle>,
@@ -22,9 +25,9 @@ pub struct AsyncPeerListener {
 }
 
 impl AsyncPeerListener {
-    /// Bind to a Unix domain socket path.
+    /// Bind to an async IPC transport endpoint.
     pub fn bind(path: impl AsRef<Path>) -> Result<Self> {
-        let socket = AsyncUnixDomainSocket::bind(path)?;
+        let socket = AsyncTransportSocket::bind(path)?;
         Ok(Self {
             socket,
             supported_channels: vec![COMMAND, DATA, TELEMETRY, ERROR],
