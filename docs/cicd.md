@@ -77,6 +77,15 @@ Primary local gates:
 - `make msrv`: core crates build+test on Rust 1.85.0 (excludes NAPI)
 - `make check-windows`: compile-only Windows target checks (no linking)
 
+Host-target note:
+
+- `cargo clippy` only lints code compiled for the current host/target combination.
+- On Windows, that means plain `make prepush` could miss Unix-gated code paths that Linux CI
+  still compiles and lints.
+- To close that gap, Windows `make prepush` also runs `make check-unix-clippy`, which adds the
+  `x86_64-unknown-linux-gnu` target and runs a Linux-target clippy pass over the Unix-gated
+  transport/frame crates and async peer tests.
+
 ## Windows Notes
 
 ### Current transport status

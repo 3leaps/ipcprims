@@ -903,11 +903,7 @@ mod tests {
         #[cfg(unix)]
         {
             // Keep path short for macOS UDS length limits.
-            return std::path::PathBuf::from(format!(
-                "/tmp/icpp-{}-{}.sock",
-                std::process::id(),
-                unique
-            ));
+            std::path::PathBuf::from(format!("/tmp/icpp-{}-{}.sock", std::process::id(), unique))
         }
         #[cfg(windows)]
         {

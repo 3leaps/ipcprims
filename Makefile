@@ -10,6 +10,7 @@
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
+.PHONY: check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
 .PHONY: precommit prepush deny audit
 .PHONY: msrv
@@ -42,6 +43,11 @@ TS_BINDINGS_DIR := bindings/typescript
 GO_OS := $(shell go env GOOS)
 GO_ARCH := $(shell go env GOARCH)
 GO_PLATFORM := $(GO_OS)-$(GO_ARCH)
+
+PREPUSH_EXTRA :=
+ifeq ($(OS),Windows_NT)
+PREPUSH_EXTRA := check-unix-clippy
+endif
 
 # -----------------------------------------------------------------------------
 # Default and Help
@@ -81,6 +87,7 @@ help: ## Show available targets
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
 	@echo "  check-windows   Run Windows target cargo checks (no link)"
+	@echo "  check-unix-clippy  Lint Unix cfg paths via Linux target"
 	@echo ""
 	@echo "Release:"
 	@echo "  release-preflight  Verify all pre-tag requirements (REQUIRED before tagging)"
@@ -265,6 +272,13 @@ check-windows-arm64-msvc: ## Windows target check: aarch64-pc-windows-msvc (foun
 	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --all-targets --target aarch64-pc-windows-msvc
 	@echo "[ok] aarch64-pc-windows-msvc check passed"
 
+check-unix-clippy: ## Lint Unix cfg paths via x86_64-unknown-linux-gnu target
+	@echo "Linting Unix cfg paths (x86_64-unknown-linux-gnu)..."
+	rustup target add x86_64-unknown-linux-gnu
+	$(CARGO) clippy -p ipcprims-transport -p ipcprims-frame --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings
+	$(CARGO) clippy -p ipcprims-peer --tests --features async --target x86_64-unknown-linux-gnu -- -D warnings
+	@echo "[ok] Unix cfg clippy check passed"
+
 msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
 	@echo "Checking MSRV (core crates at 1.85, ipcprims-napi requires 1.88)..."
 	@if rustup run 1.85.0 cargo --version >/dev/null 2>&1; then \
@@ -398,7 +412,7 @@ dogfood-cli: ## Run end-to-end CLI dogfooding matrix
 precommit: fmt-check lint ## Run pre-commit checks (fast)
 	@echo "[ok] Pre-commit checks passed"
 
-prepush: check version-check ## Run pre-push checks (thorough)
+prepush: check version-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
 
 # -----------------------------------------------------------------------------
