@@ -17,4 +17,3 @@ if (-not (Test-Path -LiteralPath $vcvars)) {
 
 # Print the path only (stdout). Makefile callers should strip CR if needed.
 Write-Output $vcvars
-

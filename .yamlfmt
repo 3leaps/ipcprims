@@ -8,8 +8,8 @@ formatter:
 
 # Exclude patterns
 exclude:
-  - node_modules/**
-  - vendor/**
-  - .git/**
-  - dist/**
-  - target/**
+  - node_modules
+  - vendor
+  - dist
+  - target
+  - .git

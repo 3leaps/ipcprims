@@ -161,9 +161,10 @@ impl std::fmt::Debug for IpcStream {
             #[cfg(unix)]
             IpcStreamInner::Unix(_) => f.debug_struct("IpcStream").field("type", &"unix").finish(),
             #[cfg(windows)]
-            IpcStreamInner::NamedPipe(_) => {
-                f.debug_struct("IpcStream").field("type", &"named-pipe").finish()
-            }
+            IpcStreamInner::NamedPipe(_) => f
+                .debug_struct("IpcStream")
+                .field("type", &"named-pipe")
+                .finish(),
         }
     }
 }

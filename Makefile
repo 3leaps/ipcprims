@@ -238,7 +238,7 @@ lint: ## Run linting (cargo clippy + goneat lint)
 	$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
 	@if command -v goneat >/dev/null 2>&1; then \
 		echo "Linting YAML, shell, workflows..."; \
-		goneat assess --categories lint --fail-on medium --ci-summary --log-level warn --output /dev/null; \
+		goneat assess --categories lint --fail-on medium --ci-summary --log-level warn; \
 	else \
 		echo "[!!] goneat not found — skipping non-Rust linting (run 'make bootstrap')"; \
 	fi

@@ -911,11 +911,11 @@ mod tests {
         }
         #[cfg(windows)]
         {
-            return std::path::PathBuf::from(format!(
+            std::path::PathBuf::from(format!(
                 r"\\.\pipe\ipcprims-async-{}-{}",
                 std::process::id(),
                 unique
-            ));
+            ))
         }
     }
 

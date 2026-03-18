@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ipcprims_frame::{
     FrameConfig, FrameReader, FrameWriter, COMMAND, DATA, DEFAULT_MAX_PAYLOAD, ERROR, TELEMETRY,
 };
-#[cfg(unix)]
-use ipcprims_transport::UnixDomainSocket;
 #[cfg(windows)]
 use ipcprims_transport::NamedPipeListener;
+#[cfg(unix)]
+use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
 #[cfg_attr(not(unix), allow(unused_imports))]
@@ -311,7 +311,9 @@ mod windows_tests {
         });
 
         let mut client = connect(&pipe, &[COMMAND]).expect("client should connect");
-        let response = client.request(b"hello-listener").expect("request should succeed");
+        let response = client
+            .request(b"hello-listener")
+            .expect("request should succeed");
         assert_eq!(response.payload.as_ref(), b"hello-listener");
 
         server.join().expect("server thread should complete");

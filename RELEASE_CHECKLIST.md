@@ -75,43 +75,52 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 > Go consumers get the wrong binaries.
 
 - [ ] **Verify current libs are stale** (sanity check before running the workflow):
+
   ```bash
   git log --oneline bindings/go/ipcprims/lib/ bindings/go/ipcprims/include/ | head -5
   # Last commit should match the VERSION you are releasing, not a prior version
   ```
 
 - [ ] **Run Go bindings workflow** (builds fresh FFI libs on all platforms):
+
   ```bash
   VERSION=$(cat VERSION)
   gh workflow run "Go Bindings (Prep)" -f version="${VERSION}"
   ```
+
   Watch progress:
+
   ```bash
   gh run list --workflow=go-bindings.yml --limit 3
   gh run watch <run-id>
   ```
 
 - [ ] **Review and merge the PR** the workflow creates:
+
   ```bash
   VERSION=$(cat VERSION)
   gh pr list --search "go-bindings/v${VERSION}" --state open
   ```
+
   Confirm the PR actually updates libs across all platforms before merging:
   - `bindings/go/ipcprims/lib/<platform>/libipcprims_ffi.a` (all platforms)
   - `bindings/go/ipcprims/lib-shared/<platform>/` (shared libs)
   - `bindings/go/ipcprims/include/ipcprims.h` (regenerated header)
 
 - [ ] **Wait for CI to pass on the merge commit** — this is the commit you will tag.
+
   ```bash
   gh run list --branch main --limit 3
   ```
 
 - [ ] **Pull the merge commit locally**:
+
   ```bash
   git pull origin main
   ```
 
 - [ ] Verify Go bindings pass locally:
+
   ```bash
   cd bindings/go/ipcprims && go test ./... && cd -
   ```
@@ -126,11 +135,13 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 Both tags must point to the **same commit** — the Go bindings PR merge commit.
 
 - [ ] Create annotated tags:
+
   ```bash
   VERSION=$(cat VERSION)
   git tag -a "v${VERSION}" -m "v${VERSION}: <brief description of release>"
   git tag -a "bindings/go/ipcprims/v${VERSION}" -m "Go bindings v${VERSION}"
   ```
+
   > The Go submodule tag is required so `go get github.com/3leaps/ipcprims/bindings/go/ipcprims@v${VERSION}`
   > resolves correctly. Without it Go module resolution fails.
 
@@ -154,7 +165,7 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > create new packages — only update existing ones. If any are missing, do the manual first
 > publish first. See `docs/guides/npm-publishing.md` for the full guide.
 >
- > ```bash
+> ```bash
 > VERSION=$(cat VERSION)
 > for pkg in "@3leaps/ipcprims" "@3leaps/ipcprims-darwin-arm64" "@3leaps/ipcprims-linux-x64-gnu" \
 >            "@3leaps/ipcprims-linux-x64-musl" "@3leaps/ipcprims-linux-arm64-gnu" "@3leaps/ipcprims-win32-x64-msvc"; do
@@ -166,11 +177,13 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > ```
 
 - [ ] **TypeScript N-API prebuilds** — run on the tag ref after upload:
+
   ```bash
   VERSION=$(cat VERSION)
   gh workflow run "TypeScript N-API Prebuilds" --ref "v${VERSION}"
   gh run list --workflow=typescript-napi-prebuilds.yml --limit 3
   ```
+
   Wait for completion. This builds `.node` binaries and stages npm package directories.
 
 - [ ] **TypeScript npm publish** — run on the tag ref after prebuilds complete:
@@ -259,9 +272,11 @@ export IPCPRIMS_GPG_HOMEDIR=/path/to/gpg/homedir  # optional
    Copies `docs/releases/vX.Y.Z.md` to `dist/release/release-notes-vX.Y.Z.md`
 
 8. **Upload signed artifacts to GitHub**
+
    ```bash
    make release-upload
    ```
+
    > **Note:** Uses `--clobber` to overwrite existing assets. Safe to rerun.
 
 9. **Publish the release** (promotes draft → public):

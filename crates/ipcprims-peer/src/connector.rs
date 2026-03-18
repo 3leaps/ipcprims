@@ -2,10 +2,10 @@ use std::path::Path;
 
 #[cfg_attr(not(unix), allow(unused_imports))]
 use ipcprims_frame::{FrameConfig, FrameReader, FrameWriter, DEFAULT_MAX_PAYLOAD};
-#[cfg(unix)]
-use ipcprims_transport::UnixDomainSocket;
 #[cfg(windows)]
 use ipcprims_transport::NamedPipeStream;
+#[cfg(unix)]
+use ipcprims_transport::UnixDomainSocket;
 
 use crate::error::Result;
 #[cfg_attr(not(unix), allow(unused_imports))]
@@ -199,7 +199,9 @@ mod windows_tests {
         });
 
         let mut client = connect(&pipe, &[COMMAND]).expect("client should connect");
-        let response = client.request(b"hello-windows").expect("request should succeed");
+        let response = client
+            .request(b"hello-windows")
+            .expect("request should succeed");
         assert_eq!(response.payload.as_ref(), b"hello-windows");
 
         server.join().expect("server thread should complete");

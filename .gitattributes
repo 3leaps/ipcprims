@@ -61,4 +61,3 @@ Makefile text eol=lf
 *.tar -text
 *.7z -text
 *.pdf -text
-

@@ -8,14 +8,14 @@ steps — read this when the automated workflow fails or when doing a first publ
 
 ipcprims publishes **six** packages to npm per release:
 
-| Package | Contents |
-|---------|----------|
-| `@3leaps/ipcprims` | Root package — optional deps on all platform packages |
-| `@3leaps/ipcprims-darwin-arm64` | macOS arm64 `.node` prebuild |
-| `@3leaps/ipcprims-linux-x64-gnu` | Linux x64 glibc `.node` prebuild |
-| `@3leaps/ipcprims-linux-x64-musl` | Linux x64 musl `.node` prebuild |
-| `@3leaps/ipcprims-linux-arm64-gnu` | Linux arm64 glibc `.node` prebuild |
-| `@3leaps/ipcprims-win32-x64-msvc` | Windows x64 `.node` prebuild |
+| Package                            | Contents                                              |
+| ---------------------------------- | ----------------------------------------------------- |
+| `@3leaps/ipcprims`                 | Root package — optional deps on all platform packages |
+| `@3leaps/ipcprims-darwin-arm64`    | macOS arm64 `.node` prebuild                          |
+| `@3leaps/ipcprims-linux-x64-gnu`   | Linux x64 glibc `.node` prebuild                      |
+| `@3leaps/ipcprims-linux-x64-musl`  | Linux x64 musl `.node` prebuild                       |
+| `@3leaps/ipcprims-linux-arm64-gnu` | Linux arm64 glibc `.node` prebuild                    |
+| `@3leaps/ipcprims-win32-x64-msvc`  | Windows x64 `.node` prebuild                          |
 
 **All six must be published together.** Publishing only the root package means
 consumers install it successfully but get no native binary — the module silently
@@ -38,6 +38,7 @@ gh workflow run "TypeScript npm Publish" --ref "v${VERSION}"
 ```
 
 OIDC trusted publishing requires:
+
 - Workflow running from a `v*` tag ref
 - `publish-npm` environment protection configured on the repo
 - All six packages already exist on npm (see First Publish below)
@@ -191,6 +192,7 @@ gh workflow run "TypeScript npm Publish" --ref "v${VERSION}" \
 ```
 
 Find the run ID:
+
 ```bash
 gh run list --workflow=typescript-napi-prebuilds.yml --limit 5
 ```

@@ -12,21 +12,21 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(windows)]
 use tracing::debug;
 #[cfg(windows)]
+use windows_sys::core::BOOL;
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_IO_PENDING, ERROR_PIPE_BUSY, ERROR_PIPE_CONNECTED,
-    GetLastError, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, GetLastError, ERROR_FILE_NOT_FOUND, ERROR_IO_PENDING, ERROR_PIPE_BUSY,
+    ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_FLAG_OVERLAPPED, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
+    CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OVERLAPPED,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
 };
-#[cfg(windows)]
-use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
 #[cfg(windows)]
-use windows_sys::core::BOOL;
+use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
 #[cfg(windows)]
 const MAX_TIMEOUT_MS: u32 = INFINITE - 1;
@@ -136,7 +136,11 @@ fn wait_for_overlapped_result(
 }
 
 #[cfg(windows)]
-fn read_file_with_timeout(handle: HANDLE, buf: &mut [u8], timeout_ms: u32) -> std::io::Result<usize> {
+fn read_file_with_timeout(
+    handle: HANDLE,
+    buf: &mut [u8],
+    timeout_ms: u32,
+) -> std::io::Result<usize> {
     let event = EventHandle::create_manual_reset()?;
     // SAFETY: zero-initialized OVERLAPPED is valid; hEvent set to owned event.
     let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
@@ -436,8 +440,8 @@ impl NamedPipeListener {
 
 #[cfg(all(test, windows))]
 mod tests {
-    use std::sync::mpsc;
     use std::sync::atomic::Ordering;
+    use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
 
@@ -512,7 +516,12 @@ mod tests {
         // Keep writing until pipe buffers fill and overlapped write hits timeout.
         for _ in 0..512 {
             match writer.write(&chunk) {
-                Ok(_) => continue,
+                Ok(n) => {
+                    if n == 0 {
+                        break;
+                    }
+                    continue;
+                }
                 Err(err) => {
                     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
                     observed_timeout = true;
@@ -571,4 +580,3 @@ mod tests {
         assert_eq!(duration_to_timeout_ms(Some(Duration::from_nanos(1))), 1);
     }
 }
-
