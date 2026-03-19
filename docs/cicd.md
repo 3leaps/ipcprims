@@ -23,8 +23,14 @@ Purpose:
 Notes:
 
 - CI sets `RUSTFLAGS="-Dwarnings"` to keep portability regressions visible.
-- Windows is currently validated in CI via `windows-cross-check` (compile-only); full Windows
-  workspace test jobs are being expanded in v0.2.1 follow-on CI updates.
+- Windows is currently validated in CI via `windows-cross-check` (compile-only) plus separate
+  full-workspace Windows test jobs.
+- `windows-cross-check` intentionally stays scoped to the foundation crates
+  (`ipcprims-transport`, `ipcprims-frame`). This matches local `make check-windows*` targets
+  and avoids pulling `ipcprims-napi` into compile-only GNU target checks where `napi-build`
+  expects `libnode.dll`.
+- Full Windows workspace coverage comes from `Windows Test`, `Windows Test (async)`, and
+  `Windows Dogfood (CLI)`.
 
 ### `msrv-matrix.yml` (tag-triggered MSRV confirmation)
 

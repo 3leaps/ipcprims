@@ -52,13 +52,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      # Runs on a real Windows runner — ring (transitive via jsonschema →
-      # reqwest → rustls) requires MSVC lib.exe for its build script.
-      # Unlike sysprims, cross-check from Linux doesn't work here.
+      # Runs on a real Windows runner. Keep this aligned with local
+      # `make check-windows*`: foundation crates only.
       #
-      # Full workspace check — named pipe transport landed in v0.2.1.
+      # Full workspace Windows coverage comes from the Windows test jobs.
+      # The GNU target cannot reliably satisfy `ipcprims-napi` / napi-build's
+      # `libnode.dll` expectation, so cross-check stays focused on transport
+      # and frame portability.
       - name: cargo check
-        run: cargo check --workspace --all-features --target ${{ matrix.target }}
+        run: cargo check -p ipcprims-transport -p ipcprims-frame --all-targets --target ${{ matrix.target }}
   windows-test:
     name: Windows Test
     runs-on: windows-latest
