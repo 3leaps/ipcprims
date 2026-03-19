@@ -56,10 +56,34 @@ jobs:
       # reqwest → rustls) requires MSVC lib.exe for its build script.
       # Unlike sysprims, cross-check from Linux doesn't work here.
       #
-      # Checks portable foundation crates. Peer/FFI/CLI need UnixDomainSocket
-      # (no Windows impl yet). Windows named pipes are tracked for v0.2.1.
+      # Full workspace check — named pipe transport landed in v0.2.1.
       - name: cargo check
-        run: cargo check -p ipcprims-transport -p ipcprims-frame --target ${{ matrix.target }}
+        run: cargo check --workspace --all-features --target ${{ matrix.target }}
+  windows-test:
+    name: Windows Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: cargo test --workspace --all-features
+  windows-test-async:
+    name: Windows Test (async)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run async tests
+        run: cargo test --workspace --features async
+  windows-dogfood:
+    name: Windows Dogfood (CLI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run CLI dogfood matrix
+        shell: bash
+        run: bash scripts/dogfood/cli-matrix.sh
   test:
     name: Test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

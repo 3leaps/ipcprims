@@ -296,6 +296,60 @@ jobs:
         with:
           name: ffi-shared-darwin-arm64
           path: dist/ffi-shared/darwin-arm64
+  build-cli-windows:
+    name: Build Windows CLI (x64)
+    runs-on: windows-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build CLI
+        shell: pwsh
+        run: cargo build --release --target x86_64-pc-windows-msvc -p ipcprims --features cli
+      - name: Package CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = "${{ needs.validate-version.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path dist/cli | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/ipcprims.exe dist/cli/
+          Copy-Item LICENSE-MIT dist/cli/
+          Copy-Item LICENSE-APACHE dist/cli/
+          Compress-Archive -Path dist/cli/* -DestinationPath "ipcprims-${version}-windows-amd64.zip"
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-amd64
+          path: ipcprims-${{ needs.validate-version.outputs.version }}-windows-amd64.zip
+  build-cli-windows-arm64:
+    name: Build Windows CLI (arm64)
+    runs-on: windows-latest-arm64-s
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - name: Build CLI
+        shell: pwsh
+        run: cargo build --release --target aarch64-pc-windows-msvc -p ipcprims --features cli
+      - name: Package CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = "${{ needs.validate-version.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path dist/cli | Out-Null
+          Copy-Item target/aarch64-pc-windows-msvc/release/ipcprims.exe dist/cli/
+          Copy-Item LICENSE-MIT dist/cli/
+          Copy-Item LICENSE-APACHE dist/cli/
+          Compress-Archive -Path dist/cli/* -DestinationPath "ipcprims-${version}-windows-arm64.zip"
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-arm64
+          path: ipcprims-${{ needs.validate-version.outputs.version }}-windows-arm64.zip
   build-windows:
     name: Build Windows (GNU, FFI)
     runs-on: windows-latest
@@ -642,6 +696,8 @@ jobs:
       - verify-go-bindings-assets
       - build-linux
       - build-macos
+      - build-cli-windows
+      - build-cli-windows-arm64
       - build-windows
       - build-windows-arm64
       - build-windows-msvc
@@ -680,7 +736,7 @@ jobs:
           set -euo pipefail
           mkdir -p release
 
-          find release-cli -type f -name '*.tar.gz' -exec mv {} release/ \;
+          find release-cli -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec mv {} release/ \;
           mv release-ffi/*.tar.gz release/
           mv release-header/ipcprims.h release/
           mv release-sbom/*.json release/
@@ -707,9 +763,9 @@ jobs:
             | Linux arm64 (musl) | `ipcprims-*-linux-arm64-musl.tar.gz` | In FFI bundle | Supported |
             | macOS x64 | `ipcprims-*-darwin-amd64.tar.gz` | In FFI bundle | Supported |
             | macOS arm64 | `ipcprims-*-darwin-arm64.tar.gz` | In FFI bundle | Supported |
-            | Windows x64 | **N/A** | In FFI bundle | Supported |
-            | Windows arm64 | **N/A** | In FFI bundle | **Not supported** |
+            | Windows x64 | `ipcprims-*-windows-amd64.zip` | In FFI bundle | Supported |
+            | Windows arm64 | `ipcprims-*-windows-arm64.zip` | In FFI bundle | **Not supported** |
 
             Notes:
-            - No Windows CLI artifacts in v0.1.x (named pipe transport lands in v0.2.0).
+            - Windows CLI uses named pipe transport (v0.2.1+).
             - No Windows arm64 Go bindings (MinGW lacks arm64 support).

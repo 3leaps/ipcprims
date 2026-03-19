@@ -275,15 +275,7 @@ impl Peer {
     fn read_frame_once(&mut self) -> Result<Frame> {
         match self.reader.read_frame() {
             Ok(frame) => Ok(frame),
-            Err(FrameError::ConnectionClosed) => {
-                Err(PeerError::Disconnected("connection closed".to_string()))
-            }
-            Err(FrameError::Io(err))
-                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::TimedOut =>
-            {
-                Err(PeerError::Timeout(self.config.shutdown_timeout))
-            }
-            Err(err) => Err(PeerError::Frame(err)),
+            Err(err) => Err(classify_frame_error(err, self.config.shutdown_timeout)),
         }
     }
 
@@ -470,10 +462,85 @@ impl Peer {
     }
 }
 
+/// Map a [`FrameError`] from the frame reader into the appropriate [`PeerError`].
+///
+/// Extracted as a free function so it can be unit-tested without a live transport.
+fn classify_frame_error(err: FrameError, shutdown_timeout: std::time::Duration) -> PeerError {
+    match err {
+        FrameError::ConnectionClosed => PeerError::Disconnected("connection closed".to_string()),
+        FrameError::Io(ref io_err)
+            if io_err.kind() == ErrorKind::WouldBlock || io_err.kind() == ErrorKind::TimedOut =>
+        {
+            PeerError::Timeout(shutdown_timeout)
+        }
+        // On Windows, named pipe closure surfaces as BrokenPipe or
+        // ConnectionReset rather than EOF (ConnectionClosed).
+        FrameError::Io(ref io_err)
+            if io_err.kind() == ErrorKind::BrokenPipe
+                || io_err.kind() == ErrorKind::ConnectionReset =>
+        {
+            PeerError::Disconnected(format!("connection closed: {}", io_err))
+        }
+        err => PeerError::Frame(err),
+    }
+}
+
 enum ControlDisposition {
     Continue,
     Return(Frame),
     Disconnected(String),
+}
+
+#[cfg(test)]
+mod classify_frame_error_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn connection_closed_maps_to_disconnected() {
+        let err = classify_frame_error(FrameError::ConnectionClosed, Duration::from_secs(5));
+        assert!(matches!(err, PeerError::Disconnected(_)));
+    }
+
+    #[test]
+    fn broken_pipe_maps_to_disconnected() {
+        let io_err = std::io::Error::new(ErrorKind::BrokenPipe, "pipe ended");
+        let err = classify_frame_error(FrameError::Io(io_err), Duration::from_secs(5));
+        assert!(
+            matches!(&err, PeerError::Disconnected(msg) if msg.contains("connection closed")),
+            "expected Disconnected, got {:?}",
+            err,
+        );
+    }
+
+    #[test]
+    fn connection_reset_maps_to_disconnected() {
+        let io_err = std::io::Error::new(ErrorKind::ConnectionReset, "reset");
+        let err = classify_frame_error(FrameError::Io(io_err), Duration::from_secs(5));
+        assert!(
+            matches!(&err, PeerError::Disconnected(msg) if msg.contains("connection closed")),
+            "expected Disconnected, got {:?}",
+            err,
+        );
+    }
+
+    #[test]
+    fn would_block_maps_to_timeout() {
+        let io_err = std::io::Error::new(ErrorKind::WouldBlock, "would block");
+        let err = classify_frame_error(FrameError::Io(io_err), Duration::from_secs(3));
+        assert!(
+            matches!(err, PeerError::Timeout(d) if d == Duration::from_secs(3)),
+            "expected Timeout(3s), got {:?}",
+            err,
+        );
+    }
+
+    #[test]
+    fn other_io_error_maps_to_frame() {
+        let io_err = std::io::Error::new(ErrorKind::PermissionDenied, "denied");
+        let err = classify_frame_error(FrameError::Io(io_err), Duration::from_secs(5));
+        assert!(matches!(err, PeerError::Frame(_)));
+    }
 }
 
 #[cfg(all(test, unix))]
