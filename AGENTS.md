@@ -207,6 +207,7 @@ Role definitions live in [`config/agentic/roles/`](config/agentic/roles/) — al
 | Role           | Source                                            | Focus                               |
 | -------------- | ------------------------------------------------- | ----------------------------------- |
 | `devlead`      | [in-repo](config/agentic/roles/devlead.yaml)      | Implementation, wire format, safety |
+| `devrev`       | [in-repo](config/agentic/roles/devrev.yaml)       | Four-eyes checkpoint review         |
 | `deliverylead` | [in-repo](config/agentic/roles/deliverylead.yaml) | Readiness, delivery coordination    |
 | `secrev`       | [in-repo](config/agentic/roles/secrev.yaml)       | Security, input validation, FFI     |
 | `qa`           | [in-repo](config/agentic/roles/qa.yaml)           | Testing, cross-platform             |
@@ -227,6 +228,22 @@ Default role for implementation. Extended with ipcprims wire format safety and c
 - Cross-platform transport abstraction
 - Wire format codec implementation
 - FFI boundary implementation
+
+### Role: devrev
+
+**Source**: [`config/agentic/roles/devrev.yaml`](config/agentic/roles/devrev.yaml)
+
+Mandatory review role for the four-eyes workflow. Devrev reviews every
+implementation checkpoint for correctness, regressions, test adequacy, and
+codebase fit. It does not replace `secrev`; security review remains a distinct
+checkpoint when required.
+
+#### Key Extensions
+
+- Mandatory checkpoint review before readiness claims
+- Correctness and regression review across crates
+- Error-path and test-coverage review
+- Escalation to `secrev` for security-sensitive checkpoints
 
 ### Role: secrev
 
@@ -271,4 +288,4 @@ FFI Architect — Bindings design and cross-language integration.
 
 ---
 
-**Last Updated**: February 6, 2026
+**Last Updated**: March 19, 2026

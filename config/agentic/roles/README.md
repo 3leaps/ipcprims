@@ -10,6 +10,7 @@ ipcprims-specific scope, responsibilities, and validation requirements.
 | Role                                   | Slug           | Category   | Purpose                                             |
 | -------------------------------------- | -------------- | ---------- | --------------------------------------------------- |
 | [Development Lead](devlead.yaml)       | `devlead`      | agentic    | Core implementation, wire format, transport         |
+| [Development Review](devrev.yaml)      | `devrev`       | review     | Mandatory four-eyes checkpoint review               |
 | [Delivery Lead](deliverylead.yaml)     | `deliverylead` | governance | Readiness assessments, delivery coordination        |
 | [Security Review](secrev.yaml)         | `secrev`       | review     | Security analysis, input validation, FFI safety     |
 | [Quality Assurance](qa.yaml)           | `qa`           | review     | Testing, cross-platform coverage, stress tests      |
@@ -58,6 +59,7 @@ Role: devlead (config/agentic/roles/devlead.yaml)
 | Task                   | Primary Role | May Escalate To                                      |
 | ---------------------- | ------------ | ---------------------------------------------------- |
 | Feature implementation | devlead      | secrev (security), qa (testing)                      |
+| Checkpoint review      | devrev       | secrev (security), devlead (implementation intent)   |
 | Bug fixes              | devlead      | qa (regression tests)                                |
 | Security review        | secrev       | human maintainers (critical)                         |
 | Test design            | qa           | devlead (implementation questions)                   |
