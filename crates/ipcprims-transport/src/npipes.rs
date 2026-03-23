@@ -19,12 +19,20 @@ use windows_sys::Win32::Foundation::{
     ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 #[cfg(windows)]
+use windows_sys::Win32::Security::{
+    AddAccessAllowedAce, GetLengthSid, InitializeAcl, InitializeSecurityDescriptor,
+    SetSecurityDescriptorDacl, ACL, ACL_REVISION, SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR,
+    TOKEN_QUERY, TOKEN_USER,
+};
+#[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OVERLAPPED,
     FILE_GENERIC_READ, FILE_GENERIC_WRITE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
 };
 #[cfg(windows)]
-use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject, INFINITE};
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, GetCurrentProcess, OpenProcessToken, WaitForSingleObject, INFINITE,
+};
 #[cfg(windows)]
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
@@ -236,6 +244,125 @@ fn normalize_pipe_name(path: &Path) -> String {
     }
 }
 
+/// Owns the buffers backing a security descriptor with an owner-only DACL.
+///
+/// The security descriptor grants `GENERIC_ALL` to the current process owner's
+/// SID and denies everyone else. This is the Windows equivalent of Unix `0o600`
+/// on a named pipe.
+///
+/// Use [`OwnerOnlySecurityDescriptor::security_attributes()`] to get a
+/// `SECURITY_ATTRIBUTES` struct suitable for `CreateNamedPipeW`. The returned
+/// struct borrows from this object, so both must stay alive until the pipe
+/// handle is created.
+#[cfg(windows)]
+struct OwnerOnlySecurityDescriptor {
+    /// Raw token-user buffer returned by `GetTokenInformation`.
+    _token_user_buf: Vec<u8>,
+    /// ACL buffer — must outlive the security descriptor.
+    _acl_buf: Vec<u8>,
+    /// Security descriptor — referenced by SECURITY_ATTRIBUTES at point of use.
+    sd: SECURITY_DESCRIPTOR,
+}
+
+#[cfg(windows)]
+impl OwnerOnlySecurityDescriptor {
+    /// Build a security descriptor that grants access only to the current
+    /// process owner.
+    fn new() -> std::io::Result<Self> {
+        use windows_sys::Win32::Foundation::GENERIC_ALL;
+        use windows_sys::Win32::Security::{GetTokenInformation, TokenUser};
+
+        // Step 1: get the current process token.
+        let mut token: HANDLE = std::ptr::null_mut();
+        // SAFETY: GetCurrentProcess returns a pseudo-handle; OpenProcessToken
+        // is safe with TOKEN_QUERY.
+        let ok = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // Step 2: query the token user (owner SID).
+        let mut needed: u32 = 0;
+        // SAFETY: first call with null buffer to get required size.
+        unsafe { GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut needed) };
+        let mut token_user_buf: Vec<u8> = vec![0u8; needed as usize];
+        // SAFETY: buffer is large enough; token is valid.
+        let ok = unsafe {
+            GetTokenInformation(
+                token,
+                TokenUser,
+                token_user_buf.as_mut_ptr().cast(),
+                needed,
+                &mut needed,
+            )
+        };
+        // SAFETY: token handle must be closed.
+        unsafe { CloseHandle(token) };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: buffer contains a valid TOKEN_USER after successful call.
+        let owner_sid = unsafe { (*(token_user_buf.as_ptr() as *const TOKEN_USER)).User.Sid };
+
+        // Step 3: build the ACL with one ACE (owner → GENERIC_ALL).
+        // ACL header + one ACCESS_ALLOWED_ACE (base size) + SID length.
+        // GetLengthSid is safe with a valid SID pointer.
+        let sid_len = unsafe { GetLengthSid(owner_sid) } as usize;
+        let acl_size = std::mem::size_of::<ACL>() + std::mem::size_of::<u32>() * 3 + sid_len;
+        let mut acl_buf: Vec<u8> = vec![0u8; acl_size];
+        let acl_ptr = acl_buf.as_mut_ptr() as *mut ACL;
+
+        // SAFETY: acl_buf is large enough for the header.
+        let ok = unsafe { InitializeAcl(acl_ptr, acl_size as u32, ACL_REVISION) };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: acl is initialized; owner_sid is valid.
+        let ok = unsafe { AddAccessAllowedAce(acl_ptr, ACL_REVISION, GENERIC_ALL, owner_sid) };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // Step 4: build the security descriptor.
+        // SAFETY: sd is zeroed and valid for initialization.
+        let mut sd: SECURITY_DESCRIPTOR = unsafe { std::mem::zeroed() };
+        // SECURITY_DESCRIPTOR_REVISION = 1 (Win32_System_SystemServices constant).
+        let ok = unsafe { InitializeSecurityDescriptor((&raw mut sd) as *mut _, 1) };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        // SAFETY: sd is initialized; acl_ptr is valid and outlives sd
+        // because _acl_buf is stored alongside sd in this struct.
+        let ok = unsafe {
+            SetSecurityDescriptorDacl((&raw mut sd) as *mut _, 1, acl_ptr as *const _, 0)
+        };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(Self {
+            _token_user_buf: token_user_buf,
+            _acl_buf: acl_buf,
+            sd,
+        })
+    }
+
+    /// Build a `SECURITY_ATTRIBUTES` referencing this descriptor.
+    ///
+    /// The returned struct borrows `self.sd`, so `self` must outlive any use
+    /// of the returned value.
+    fn security_attributes(&mut self) -> SECURITY_ATTRIBUTES {
+        SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: (&raw mut self.sd) as *mut _,
+            bInheritHandle: 0,
+        }
+    }
+}
+
 /// Windows named-pipe stream.
 #[cfg(windows)]
 pub struct NamedPipeStream {
@@ -384,7 +511,16 @@ impl NamedPipeListener {
     pub fn accept(&self) -> Result<IpcStream> {
         let wide = to_wide_null(&self.pipe_name);
 
+        // Build an owner-only DACL so only the creating user can open the pipe.
+        // This is the Windows equivalent of Unix 0o600 permissions.
+        let mut sd = OwnerOnlySecurityDescriptor::new().map_err(|err| TransportError::Bind {
+            path: PathBuf::from(&self.pipe_name),
+            source: err,
+        })?;
+        let sa = sd.security_attributes();
+
         // SAFETY: wide is NUL-terminated and valid for call duration.
+        // sa borrows sd which is alive for the duration of this call.
         let handle: HANDLE = unsafe {
             CreateNamedPipeW(
                 wide.as_ptr(),
@@ -394,7 +530,7 @@ impl NamedPipeListener {
                 64 * 1024,
                 64 * 1024,
                 0,
-                std::ptr::null_mut(),
+                &sa,
             )
         };
 
