@@ -318,4 +318,54 @@ mod windows_tests {
 
         server.join().expect("server thread should complete");
     }
+
+    /// Verify that a named pipe listener can accept two sequential clients.
+    ///
+    /// Windows named pipes require a new pipe instance after each client
+    /// disconnects. This test exercises that recreation path — it was the
+    /// subject of fix 6f89584.
+    #[test]
+    fn multi_client_reconnect_on_named_pipe() {
+        let pipe = make_pipe_name("multi-reconnect");
+        let listener = PeerListener::bind(&pipe).expect("listener should bind named pipe");
+
+        let server = thread::spawn(move || {
+            // Accept first client, exchange a frame, then drop (disconnect).
+            let mut peer1 = listener.accept().expect("first accept should succeed");
+            assert_eq!(peer1.id(), "peer-1");
+            let frame = peer1
+                .recv_on(COMMAND)
+                .expect("should receive from client 1");
+            peer1
+                .send(COMMAND, frame.payload.as_ref())
+                .expect("should echo to client 1");
+            drop(peer1);
+
+            // Accept second client on the same listener.
+            let mut peer2 = listener.accept().expect("second accept should succeed");
+            assert_eq!(peer2.id(), "peer-2");
+            let frame = peer2
+                .recv_on(COMMAND)
+                .expect("should receive from client 2");
+            peer2
+                .send(COMMAND, frame.payload.as_ref())
+                .expect("should echo to client 2");
+        });
+
+        // Client 1: connect, roundtrip, disconnect.
+        let mut c1 = connect(&pipe, &[COMMAND]).expect("client 1 should connect");
+        let r1 = c1.request(b"from-client-1").expect("client 1 request");
+        assert_eq!(r1.payload.as_ref(), b"from-client-1");
+        drop(c1);
+
+        // Small delay for pipe instance recreation.
+        thread::sleep(std::time::Duration::from_millis(50));
+
+        // Client 2: connect to the same pipe name.
+        let mut c2 = connect(&pipe, &[COMMAND]).expect("client 2 should connect");
+        let r2 = c2.request(b"from-client-2").expect("client 2 request");
+        assert_eq!(r2.payload.as_ref(), b"from-client-2");
+
+        server.join().expect("server thread should complete");
+    }
 }

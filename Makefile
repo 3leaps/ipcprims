@@ -138,7 +138,7 @@ bootstrap: ## Install required tools (sfetch -> goneat)
 	@mkdir -p "$(BIN_DIR)"
 	@if [ ! -x "$(BIN_DIR)/sfetch" ] && ! command -v sfetch >/dev/null 2>&1; then \
 		echo "[..] Installing sfetch (trust anchor)..."; \
-		curl -fsSL https://github.com/3leaps/sfetch/releases/download/$(SFETCH_VERSION)/install-sfetch.sh | bash -s -- --dest "$(BIN_DIR)"; \
+		curl -fsSL https://github.com/3leaps/sfetch/releases/latest/download/install-sfetch.sh | bash -s -- --dir "$(BIN_DIR)" --yes; \
 	else \
 		echo "[ok] sfetch already installed"; \
 	fi
@@ -164,39 +164,21 @@ bootstrap: ## Install required tools (sfetch -> goneat)
 	fi
 	@echo ""
 	@echo "[..] Checking Rust dev tools..."
-	@# NOTE (Windows): Git-for-Windows can provide a non-MSVC `link.exe` earlier on PATH.
-	@# Rust MSVC builds must use MSVC's linker. For Windows we force the MSVC environment
-	@# for `cargo install` steps by calling `vcvars64.bat` inside cmd.exe.
 	@if ! command -v cargo-deny >/dev/null 2>&1; then \
 		echo "[..] Installing cargo-deny..."; \
-		if [ "$(OS)" = "Windows_NT" ]; then \
-			VCVARS64_BAT="$$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/vcvars64-path.ps1 | tr -d '\r')"; \
-			cmd.exe /c "call \"$$VCVARS64_BAT\" >nul && cargo install cargo-deny --locked"; \
-		else \
-			cargo install cargo-deny --locked; \
-		fi; \
+		cargo install cargo-deny --locked; \
 	else \
 		echo "[ok] cargo-deny installed"; \
 	fi
 	@if ! command -v cargo-audit >/dev/null 2>&1; then \
 		echo "[..] Installing cargo-audit..."; \
-		if [ "$(OS)" = "Windows_NT" ]; then \
-			VCVARS64_BAT="$$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/vcvars64-path.ps1 | tr -d '\r')"; \
-			cmd.exe /c "call \"$$VCVARS64_BAT\" >nul && cargo install cargo-audit --locked"; \
-		else \
-			cargo install cargo-audit --locked; \
-		fi; \
+		cargo install cargo-audit --locked; \
 	else \
 		echo "[ok] cargo-audit installed"; \
 	fi
 	@if ! cargo set-version -V >/dev/null 2>&1; then \
 		echo "[..] Installing cargo-edit..."; \
-		if [ "$(OS)" = "Windows_NT" ]; then \
-			VCVARS64_BAT="$$(powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/vcvars64-path.ps1 | tr -d '\r')"; \
-			cmd.exe /c "call \"$$VCVARS64_BAT\" >nul && cargo install cargo-edit --locked"; \
-		else \
-			cargo install cargo-edit --locked; \
-		fi; \
+		cargo install cargo-edit --locked; \
 	else \
 		echo "[ok] cargo-edit installed"; \
 	fi

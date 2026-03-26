@@ -190,3 +190,89 @@ async fn connect_server(server: &NamedPipeServer) -> Result<()> {
     }?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+
+    fn test_pipe_name(tag: &str) -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        PathBuf::from(format!(
+            r"\\.\pipe\ipcprims-async-transport-{tag}-{}-{}",
+            std::process::id(),
+            n
+        ))
+    }
+
+    /// Basic async transport roundtrip: server accepts, client writes, server
+    /// reads the same bytes back.
+    #[tokio::test]
+    async fn async_roundtrip_on_named_pipe() {
+        let pipe = test_pipe_name("roundtrip");
+        let listener = AsyncNamedPipeSocket::bind(&pipe).expect("bind should succeed");
+
+        let pipe_client = pipe.clone();
+        let client_task = tokio::spawn(async move {
+            let mut stream = AsyncNamedPipeSocket::connect(&pipe_client)
+                .await
+                .expect("client connect");
+            stream
+                .write_all(b"hello-async")
+                .await
+                .expect("client write");
+            stream.flush().await.expect("client flush");
+            stream.shutdown().await.expect("client shutdown");
+        });
+
+        let mut server_stream = listener.accept().await.expect("accept");
+        let mut buf = vec![0u8; 64];
+        let n = server_stream.read(&mut buf).await.expect("server read");
+        assert_eq!(&buf[..n], b"hello-async");
+
+        client_task.await.expect("client task");
+    }
+
+    /// Async multi-client: accept two sequential clients on the same pipe name.
+    /// Exercises pipe instance recreation in the async path.
+    #[tokio::test]
+    async fn async_multi_client_on_named_pipe() {
+        let pipe = test_pipe_name("multi-async");
+
+        // Client 1
+        let listener1 = AsyncNamedPipeSocket::bind(&pipe).expect("bind should succeed");
+        let pipe_c1 = pipe.clone();
+        let c1 = tokio::spawn(async move {
+            let mut stream = AsyncNamedPipeSocket::connect(&pipe_c1)
+                .await
+                .expect("client 1 connect");
+            stream.write_all(b"c1").await.expect("c1 write");
+            stream.flush().await.expect("c1 flush");
+        });
+        let mut s1 = listener1.accept().await.expect("accept 1");
+        let mut buf = vec![0u8; 16];
+        let n = s1.read(&mut buf).await.expect("read 1");
+        assert_eq!(&buf[..n], b"c1");
+        c1.await.expect("client 1 task");
+        drop(s1);
+
+        // Client 2 — new listener instance on the same pipe name
+        let listener2 = AsyncNamedPipeSocket::bind(&pipe).expect("rebind should succeed");
+        let pipe_c2 = pipe.clone();
+        let c2 = tokio::spawn(async move {
+            let mut stream = AsyncNamedPipeSocket::connect(&pipe_c2)
+                .await
+                .expect("client 2 connect");
+            stream.write_all(b"c2").await.expect("c2 write");
+            stream.flush().await.expect("c2 flush");
+        });
+        let mut s2 = listener2.accept().await.expect("accept 2");
+        let mut buf2 = vec![0u8; 16];
+        let n2 = s2.read(&mut buf2).await.expect("read 2");
+        assert_eq!(&buf2[..n2], b"c2");
+        c2.await.expect("client 2 task");
+    }
+}

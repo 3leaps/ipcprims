@@ -1,4 +1,4 @@
-#![cfg(all(unix, feature = "cli"))]
+#![cfg(feature = "cli")]
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 use ipcprims_frame::{COMMAND, ERROR};
 use ipcprims_peer::connect;
 
-fn unique_temp_dir(tag: &str) -> PathBuf {
+#[cfg(unix)]
+fn unique_ipc_dir(tag: &str) -> PathBuf {
     let dir = PathBuf::from(format!(
         "/tmp/icpcli-{tag}-{}-{}",
         std::process::id(),
@@ -20,6 +21,38 @@ fn unique_temp_dir(tag: &str) -> PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir should be creatable");
     dir
+}
+
+#[cfg(windows)]
+fn unique_ipc_dir(tag: &str) -> PathBuf {
+    let dir = PathBuf::from(format!(
+        "{}/icpcli-{tag}-{}-{}",
+        std::env::temp_dir().display(),
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("temp dir should be creatable");
+    dir
+}
+
+#[cfg(unix)]
+fn unique_ipc_path(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.sock"))
+}
+
+#[cfg(windows)]
+fn unique_ipc_path(_dir: &Path, name: &str) -> PathBuf {
+    PathBuf::from(format!(
+        r"\\.\pipe\ipcprims-cli-{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos()
+    ))
 }
 
 fn wait_for_connect(
@@ -43,8 +76,8 @@ fn wait_for_connect(
 
 #[test]
 fn echo_validate_returns_error_and_continues_session() {
-    let dir = unique_temp_dir("echo-validate");
-    let sock_path = dir.join("echo.sock");
+    let dir = unique_ipc_dir("echo-validate");
+    let sock_path = unique_ipc_path(&dir, "echo");
     let schema_dir = dir.join("schemas");
     std::fs::create_dir_all(&schema_dir).expect("schema dir should be creatable");
 
@@ -72,7 +105,7 @@ fn echo_validate_returns_error_and_continues_session() {
         .spawn()
         .expect("echo command should start");
 
-    let mut peer = wait_for_connect(&sock_path, &[COMMAND, ERROR], Duration::from_secs(3))
+    let mut peer = wait_for_connect(&sock_path, &[COMMAND, ERROR], Duration::from_secs(5))
         .expect("client should connect to echo server");
 
     peer.send(COMMAND, br#"{"nope":true}"#)

@@ -715,4 +715,51 @@ mod tests {
         assert_eq!(duration_to_timeout_ms(None), INFINITE);
         assert_eq!(duration_to_timeout_ms(Some(Duration::from_nanos(1))), 1);
     }
+
+    /// Verify that OwnerOnlySecurityDescriptor builds a DACL with exactly one
+    /// ACE granting GENERIC_ALL to the current process owner.
+    ///
+    /// This validates the hardening from commit e73620a — pipes should not be
+    /// accessible to other users on the machine.
+    #[test]
+    fn owner_only_dacl_has_single_ace_for_current_user() {
+        use windows_sys::Win32::Security::{GetAce, GetSecurityDescriptorDacl, ACCESS_ALLOWED_ACE};
+
+        let mut sd = OwnerOnlySecurityDescriptor::new().expect("SD should build");
+        let sa = sd.security_attributes();
+
+        // Extract the DACL from the security descriptor.
+        let mut dacl_present: i32 = 0;
+        let mut dacl_ptr: *const ACL = std::ptr::null();
+        let mut defaulted: i32 = 0;
+        // SAFETY: sa.lpSecurityDescriptor is a valid initialized SD.
+        let ok = unsafe {
+            GetSecurityDescriptorDacl(
+                sa.lpSecurityDescriptor,
+                &mut dacl_present,
+                &mut dacl_ptr as *mut *const ACL as *mut *mut ACL,
+                &mut defaulted,
+            )
+        };
+        assert_ne!(ok, 0, "GetSecurityDescriptorDacl should succeed");
+        assert_ne!(dacl_present, 0, "DACL should be present");
+        assert!(!dacl_ptr.is_null(), "DACL pointer should not be null");
+
+        // SAFETY: dacl_ptr is valid after successful call.
+        let acl = unsafe { &*dacl_ptr };
+        assert_eq!(acl.AceCount, 1, "DACL should have exactly one ACE");
+
+        // Verify the ACE is ACCESS_ALLOWED with GENERIC_ALL.
+        let mut ace_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+        // SAFETY: dacl_ptr is valid and AceCount >= 1.
+        let ok = unsafe { GetAce(dacl_ptr as *const _ as *mut _, 0, &mut ace_ptr) };
+        assert_ne!(ok, 0, "GetAce should succeed");
+        // SAFETY: ace_ptr is valid after successful GetAce.
+        let ace = unsafe { &*(ace_ptr as *const ACCESS_ALLOWED_ACE) };
+        assert_eq!(
+            ace.Mask,
+            windows_sys::Win32::Foundation::GENERIC_ALL,
+            "ACE should grant GENERIC_ALL"
+        );
+    }
 }
