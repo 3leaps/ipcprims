@@ -9,6 +9,7 @@
 #   make build      - Build all crates
 
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
+.PHONY: doctor-env
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
@@ -62,6 +63,7 @@ help: ## Show available targets
 	@echo "Development:"
 	@echo "  help            Show this help message"
 	@echo "  bootstrap       Install tools (sfetch -> goneat)"
+	@echo "  doctor-env      Report shell, platform, and tool availability"
 	@echo "  build           Build all crates (debug)"
 	@echo "  build-release   Build all crates (release)"
 	@echo "  install         Install ipcprims binary to ~/.local/bin"
@@ -187,6 +189,67 @@ bootstrap: ## Install required tools (sfetch -> goneat)
 
 bootstrap-force: ## Force reinstall all tools
 	@$(MAKE) bootstrap FORCE=1
+
+# -----------------------------------------------------------------------------
+# Environment Doctor
+# -----------------------------------------------------------------------------
+
+doctor-env: ## Report shell, platform, and tool availability
+	@echo "== Environment Report =="
+	@echo ""
+	@echo "Shell:    $$SHELL (pid $$$$)"
+	@echo "OS:       $$(uname -s)"
+	@echo "Arch:     $$(uname -m)"
+	@echo "Make:     $(MAKE) ($(MAKE_VERSION))"
+	@echo ""
+	@echo "-- Rust --"
+	@if command -v rustc >/dev/null 2>&1; then \
+		echo "[ok] rustc: $$(rustc --version)"; \
+		echo "     target: $$(rustc -vV | grep host | awk '{print $$2}')"; \
+	else \
+		echo "[!!] rustc not found"; \
+	fi
+	@if command -v cargo >/dev/null 2>&1; then \
+		echo "[ok] cargo: $$(cargo --version)"; \
+	else \
+		echo "[!!] cargo not found"; \
+	fi
+	@echo ""
+	@echo "-- Node.js --"
+	@if command -v node >/dev/null 2>&1; then \
+		echo "[ok] node: $$(node --version) ($$(node -p process.arch))"; \
+	else \
+		echo "[!!] node not found"; \
+	fi
+	@if command -v npm >/dev/null 2>&1; then \
+		echo "[ok] npm: $$(npm --version)"; \
+	else \
+		echo "[!!] npm not found"; \
+	fi
+	@if command -v fnm >/dev/null 2>&1; then \
+		echo "[ok] fnm: $$(fnm --version 2>&1 | head -1)"; \
+		echo "     FNM_ARCH=$${FNM_ARCH:-<unset>}"; \
+	else \
+		echo "[--] fnm not found (optional)"; \
+	fi
+	@echo ""
+	@echo "-- Go --"
+	@if command -v go >/dev/null 2>&1; then \
+		echo "[ok] go: $$(go version)"; \
+	else \
+		echo "[!!] go not found"; \
+	fi
+	@echo ""
+	@echo "-- Foundation Tools --"
+	@for tool in goneat sfetch cargo-deny cargo-audit cbindgen prettier biome yamlfmt yamllint actionlint checkmake rg jq yq; do \
+		if command -v $$tool >/dev/null 2>&1; then \
+			printf "[ok] %-14s %s\n" "$$tool" "$$(command -v $$tool)"; \
+		else \
+			printf "[!!] %-14s MISSING\n" "$$tool"; \
+		fi; \
+	done
+	@echo ""
+	@echo "== End Report =="
 
 # -----------------------------------------------------------------------------
 # Quality Gates

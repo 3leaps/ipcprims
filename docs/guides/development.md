@@ -16,6 +16,40 @@ Once prerequisites are in place, bootstrap installs the remaining Rust dev tools
 make bootstrap
 ```
 
+After bootstrap, verify your environment is complete:
+
+```sh
+make doctor-env
+```
+
+This reports your shell, OS, platform, toolchain versions, and tool availability.
+If any tools show `[!!] MISSING`, check the platform-specific sections below or
+run `make bootstrap` again.
+
+---
+
+## Node.js version manager
+
+We recommend [fnm](https://github.com/Schniz/fnm) as the Node.js version manager
+across all platforms. fnm is fast, cross-platform, and correctly handles ARM64
+architectures — which is critical on Windows ARM64 where
+[nvm-windows silently installs x64 binaries](windows-arm64-rough-edges.md#4-nvm-windows-does-not-support-arm64--use-fnm-instead).
+
+[Volta](https://volta.sh) is also a good cross-platform option, particularly for
+teams that want pinned toolchain versions per project. Either fnm or Volta works;
+we document fnm below because it is what we test against.
+
+> **nvm (Unix)** works fine on Linux/macOS x64 and arm64. We still recommend fnm
+> for consistency across platforms, but nvm is not a problem on Unix.
+>
+> **nvm-windows** should be avoided on ARM64 machines. See
+> [rough-edges item 4](windows-arm64-rough-edges.md#4-nvm-windows-does-not-support-arm64--use-fnm-instead).
+
+**Important:** fnm requires `fnm env` to be evaluated in each shell session.
+Add the appropriate line to your shell profile — see
+[rough-edges item 5](windows-arm64-rough-edges.md#5-fnm-requires-fnm-env-evaluation-in-every-shell)
+or the [fnm shell setup guide](https://github.com/Schniz/fnm#shell-setup).
+
 ---
 
 ## Linux / macOS
@@ -43,17 +77,13 @@ For Linux ARM64, replace `linux-amd64` with `linux-arm64` in the URL above.
 ### Node.js
 
 ```sh
-# macOS
+# Via fnm (recommended)
+curl -fsSL https://fnm.vercel.app/install | bash
+fnm install --lts
+
+# macOS alternative (Homebrew)
 brew install node
-
-# Linux (via nvm — recommended)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-nvm install --lts
 ```
-
-> **Windows ARM64:** Do not use nvm-windows — it silently installs x64 Node.js on ARM64
-> machines. Use [fnm](https://github.com/Schniz/fnm) instead (`scoop install fnm` with
-> `FNM_ARCH=arm64`). See [Windows ARM64 Dev Setup](windows-dev-setup.md#step-5--nodejs-via-fnm).
 
 ### sfetch and goneat
 
@@ -70,6 +100,7 @@ sfetch --repo fulmenhq/goneat --tag v0.5.1
 ```sh
 git clone https://github.com/3leaps/ipcprims && cd ipcprims
 make bootstrap
+make doctor-env   # verify everything is in place
 make check
 ```
 
@@ -86,7 +117,9 @@ It covers:
 
 - Scoop + rustup with the `aarch64-pc-windows-gnullvm` toolchain
 - MSYS2 clangarm64 for import libs and `clang.exe`
-- `~/.cargo/config.toml` and `.bashrc` wiring
+- VC++ Redistributable (required for MSVC-linked npm tools like biome)
+- `~/.cargo/config.toml` and shell profile wiring (`.bashrc` + PowerShell)
+- fnm with `FNM_ARCH=arm64` for native ARM64 Node.js
 - Go installation (native ARM64 binary)
 - N-API TypeScript bindings (`libnode.dll.a` generation via llvm-dlltool)
 - MSVC alternative
@@ -99,6 +132,7 @@ Known rough edges (ecosystem immaturity, not design issues) are documented separ
 ## After setup — daily workflow
 
 ```sh
+make doctor-env   # check environment (useful after shell/tool updates)
 make fmt          # format all code
 make check        # fmt-check + lint + test + deny (full gate)
 make build        # debug build
