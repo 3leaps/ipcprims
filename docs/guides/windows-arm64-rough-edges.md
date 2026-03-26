@@ -173,3 +173,30 @@ when you `cd` into a directory containing a `.node-version` or `.nvmrc` file.
 
 **Will fix when:** fnm adds a persistent default that works without per-shell env setup
 (tracked upstream).
+
+---
+
+## 6. MSVC-linked npm packages need the VC++ runtime
+
+**Symptom:** A globally installed npm tool (e.g. `biome`) crashes immediately with
+`error while loading shared libraries` (Git Bash) or a silent non-zero exit
+(PowerShell).
+
+**Root cause:** Some npm packages ship native MSVC-linked binaries (e.g.
+`@biomejs/cli-win32-arm64`). These require `vcruntime140.dll`, which is part of
+the Microsoft Visual C++ Redistributable. A pure gnullvm toolchain setup does
+not include this DLL.
+
+**Resolution:** Install the ARM64 VC++ Redistributable manually (interactive —
+requires accepting license terms and has GUI confirmation dialogs):
+
+```powershell
+winget install Microsoft.VCRedist.2015+.arm64
+```
+
+> **Note:** This must be run interactively in PowerShell or cmd — it prompts for
+> agreement to source terms and pops up an installer GUI. It cannot be scripted
+> silently.
+
+**Will fix when:** Not applicable — this is a permanent dependency for
+MSVC-linked native binaries. Document as a prerequisite for the gnullvm setup.

@@ -18,6 +18,17 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 irm get.scoop.sh | iex
 ```
 
+Install the ARM64 Visual C++ Redistributable (required by MSVC-linked tools like
+`biome`). This is interactive — it prompts for license agreement and has GUI
+dialogs:
+
+```powershell
+winget install Microsoft.VCRedist.2015+.arm64
+```
+
+See [rough-edges item 6](windows-arm64-rough-edges.md#6-msvc-linked-npm-packages-need-the-vc-runtime)
+for details.
+
 ---
 
 ## Step 1 — Core tools
@@ -305,14 +316,14 @@ ARM64 node.exe, set `LIBNODE_PATH` in `config.toml`, and add `RUSTFLAGS` to your
 
 ## Known limitations on Windows
 
-| Feature | Status | Notes |
-|---|---|---|
-| Core Rust build (`cargo build`) | ✅ | All crates except N-API |
-| Test suite (`cargo test`) | ✅ | Full pass |
-| cargo-deny / cargo-audit | ✅ | Requires MSYS2 clangarm64 |
-| TypeScript N-API bindings (`make ts-build`) | ✅ | Requires Step 9 + `RUSTFLAGS` in `.bashrc`; see rough-edges annex |
-| Go bindings (`make go-build`) | ✅ | Go installed via Step 7; `cbindgen` installed via bootstrap |
-| `make check-windows-msvc` | ❌ | Requires MSVC; skip on GNU setup |
+| Feature                                     | Status | Notes                                                             |
+| ------------------------------------------- | ------ | ----------------------------------------------------------------- |
+| Core Rust build (`cargo build`)             | ✅     | All crates except N-API                                           |
+| Test suite (`cargo test`)                   | ✅     | Full pass                                                         |
+| cargo-deny / cargo-audit                    | ✅     | Requires MSYS2 clangarm64                                         |
+| TypeScript N-API bindings (`make ts-build`) | ✅     | Requires Step 9 + `RUSTFLAGS` in `.bashrc`; see rough-edges annex |
+| Go bindings (`make go-build`)               | ✅     | Go installed via Step 7; `cbindgen` installed via bootstrap       |
+| `make check-windows-msvc`                   | ❌     | Requires MSVC; skip on GNU setup                                  |
 
 ---
 

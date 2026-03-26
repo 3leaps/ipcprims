@@ -112,10 +112,10 @@ committing and `make prepush` before pushing.
 
 ## Bindings
 
-| Binding | Target | Extra requirement |
-|---|---|---|
-| Go | `bindings/go/ipcprims` | Go 1.21+ |
-| TypeScript (N-API) | `bindings/typescript` | Node 18+, `make ts-build` |
+| Binding            | Target                 | Extra requirement         |
+| ------------------ | ---------------------- | ------------------------- |
+| Go                 | `bindings/go/ipcprims` | Go 1.21+                  |
+| TypeScript (N-API) | `bindings/typescript`  | Node 18+, `make ts-build` |
 
 Sync the FFI artifacts before building bindings:
 
