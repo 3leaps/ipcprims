@@ -4,7 +4,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_call: # Allow this workflow to be called by other workflows
+  workflow_call:  # Allow this workflow to be called by other workflows
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
@@ -239,7 +239,7 @@ jobs:
         run: cargo install cargo-audit --locked
       - name: Security audit
         run: cargo audit
-        continue-on-error: true # Advisory-only, non-blocking for now
+        continue-on-error: true  # Advisory-only, non-blocking for now
   version-check:
     name: Version Consistency
     runs-on: ubuntu-latest
