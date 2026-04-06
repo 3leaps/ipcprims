@@ -96,9 +96,8 @@ Host-target note:
 
 ### Current transport status
 
-- Sync Windows named-pipe transport is now implemented in the Rust transport/peer layers and
-  validated locally on Windows.
-- Async Windows named-pipe transport and CI matrix expansion remain in-progress for v0.2.1.
+- Sync Windows named-pipe transport is implemented in the Rust transport/peer layers.
+- Async Windows named-pipe transport is implemented; CI matrix includes `Windows Test` and `Windows Test (async)` jobs.
 
 ### Toolchain prerequisites
 

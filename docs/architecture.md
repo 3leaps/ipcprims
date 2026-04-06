@@ -63,7 +63,7 @@ Header: 8 bytes. Max payload: 16 MiB (configurable).
 
 The framing layer (`FrameReader<T: Read>`, `FrameWriter<T: Write>`) works with any byte stream. The transport crate provides IPC-specific bindings. Additional transports (TCP, TCP+TLS) are planned for a future minor release behind feature flags. See [DDR-0001](decisions/DDR-0001-transport-scope.md).
 
-\* Windows named pipes are supported for sync transport paths; async named-pipe transport remains in-progress for v0.2.1 follow-on work.
+\* Windows named pipes are supported for both sync and async transport paths.
 
 ## Security Considerations
 

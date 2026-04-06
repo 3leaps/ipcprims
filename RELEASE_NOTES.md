@@ -6,6 +6,36 @@
 
 ---
 
+## v0.2.1 — 2026-04-04
+
+Windows named pipe transport (sync + async), full Windows CI/releng, and developer experience improvements.
+
+### Highlights
+
+- **Windows named pipes (sync + async)**: Complete named pipe transport in `ipcprims-transport` with overlapped I/O timeout enforcement, owner-only DACL for access control, and async transport wrapper — `AsyncPeer` and `AsyncPeerListener` now compile and work on Windows
+- **Windows CI expansion**: `windows-test`, `windows-test-async`, and `windows-dogfood` jobs; Windows CLI build jobs (x64 + arm64) in release workflow
+- **Peer disconnect handling**: `BrokenPipe`/`ConnectionReset` reclassified as `Disconnected` (not `Fatal`) — fixes Windows pipe closure behavior
+- **Dev tooling**: `make doctor-env` for environment diagnostics; `make check-unix-clippy` for cross-host lint coverage
+- **npm publish fixes**: Idempotent (skips already-published), OIDC npmrc fix, registry API verification
+
+### Platform Scope
+
+- **Windows x64 (sync + async)**: Supported via named pipes
+- **Windows ARM64 (sync + async)**: Supported via named pipes
+- **Developer guides**: `docs/guides/windows-dev-setup.md` and `docs/guides/windows-arm64-rough-edges.md`
+
+### Known Issues
+
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema`. No functional impact.
+
+### What's Next
+
+- **v0.3.0**: TCP transport (per DDR-0001), CLI P2 commands
+
+Full release details: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md)
+
+---
+
 ## v0.2.0 — 2026-02-26
 
 Tokio-native async API on Unix (UDS). First minor version bump adding new public API surface since v0.1.0.
@@ -29,7 +59,7 @@ Tokio-native async API on Unix (UDS). First minor version bump adding new public
 
 ### What's Next
 
-- **v0.2.1**: Windows named pipes (sync first, async follow-on), full Windows CI integration
+- ~~**v0.2.1**: Windows named pipes~~ — Shipped
 
 Full release details: [docs/releases/v0.2.0.md](docs/releases/v0.2.0.md)
 
@@ -48,7 +78,6 @@ Release pipeline: multi-platform FFI build matrix, SBOM generation, and structur
 ### Known Issues
 
 - **Go prebuilt libs**: Not yet populated — `go-bindings.yml` must run before tagging (d4-02).
-- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
 
 ### What's Next
 
@@ -56,31 +85,3 @@ Release pipeline: multi-platform FFI build matrix, SBOM generation, and structur
 - **v0.2.0**: Tokio-native async API, named pipe transport for Windows, TCP transport (per DDR-0001), CLI P2 commands
 
 Full release details: [docs/releases/v0.1.2.md](docs/releases/v0.1.2.md)
-
----
-
-## v0.1.1 — 2026-02-15
-
-Infrastructure release: cross-language binding scaffolds and CI/release pipeline maturation. No new Rust API surface — bindings wrap the existing v0.1.0 API.
-
-### Highlights
-
-- **FFI crate** (`ipcprims-ffi`): C-ABI exports for listener, peer, frame, and schema operations; `staticlib` + `cdylib` outputs; `cbindgen`-generated C header; smoke test in CI
-- **Go bindings** (`bindings/go/ipcprims`): CGo module with Listener, Peer, SchemaRegistry; stub FFI bridge for platforms without prebuilt libs; golangci-lint in CI
-- **TypeScript bindings** (`bindings/typescript`): NAPI-RS package `@3leaps/ipcprims` with 5-platform prebuild matrix; npm platform packages for optional native addon resolution
-- **CI matrix expanded**: Windows cross-check (3 targets), Linux musl build+test, FFI header generation + C smoke, Go lint+test, TypeScript build+test+typecheck
-- **4 new workflows**: `go-bindings.yml` (multi-platform FFI build + PR), `typescript-bindings.yml` (cross-platform test), `typescript-napi-prebuilds.yml` (prebuild .node files), `typescript-npm-publish.yml` (OIDC trusted publishing)
-- **Release scripts activated**: download, upload, and checksum scripts now handle FFI bundles, C headers, and SBOM artifacts
-
-### Known Issues
-
-- **release.yml**: Still uses minimal v0.1.0 skeleton. Multi-platform build matrix with FFI bundle packaging planned for v0.1.2.
-- **Go prebuilt libs**: Not yet populated — `go-bindings.yml` workflow creates the PR. Stub bridge compiles but FFI calls return `ErrFFIUnavailable` without prebuilts.
-- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
-
-### What's Next
-
-- **v0.1.2**: Release pipeline rewrite — multi-platform FFI build matrix, SBOM generation, structured FFI bundle packaging
-- **v0.2.0**: Tokio-native async API, TCP transport (per DDR-0001), CLI P2 commands
-
-Full release details: [docs/releases/v0.1.1.md](docs/releases/v0.1.1.md)

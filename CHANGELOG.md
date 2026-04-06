@@ -11,6 +11,41 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.2.1] — 2026-04-04
+
+Windows named pipe transport (sync + async), CI/releng expansion, and developer experience improvements.
+
+### Added
+
+- **Windows named pipes (sync)**: `NamedPipeListener` and `NamedPipeStream` replace the `Unavailable` placeholder in `ipcprims-transport`; peer connect/listen paths wired to named pipes on Windows
+- **Windows named pipes (async)**: `AsyncNamedPipeStream` transport wrapper; async peer/platform gates lifted so `AsyncPeer`/`AsyncPeerListener`/`async_connect` compile and work on Windows
+- **Named pipe timeouts**: Overlapped I/O enforcement of read/write timeouts on Windows named pipes, with timeout reset/clamp tests
+- **Named pipe access control**: Owner-only DACL for Windows named-pipe listener instances (aligns with Unix 0o600 semantics)
+- **Windows test coverage**: Multi-client reconnect, DACL verification, async transport roundtrip, timeout behavior, peer unsupported-behavior tests
+- **Windows CLI dogfood**: `cli-matrix.sh` supports Windows named pipe paths with retry helper and explicit process tracking
+- **Windows CI/releng**: `windows-test`, `windows-test-async`, `windows-dogfood` jobs in CI; Windows CLI build jobs (x64 + arm64) in release workflow
+- **Dev tooling**: `make doctor-env` target for environment diagnostics; `make check-unix-clippy` for cross-host lint coverage of Unix-gated code
+- **Documentation**: `docs/guides/windows-dev-setup.md`, `docs/guides/windows-arm64-rough-edges.md`, `docs/guides/npm-publishing.md`
+- **Roles**: `devrev` role definition for code review agents
+
+### Changed
+
+- **Peer disconnect handling**: `BrokenPipe` and `ConnectionReset` frame errors classified as `Disconnected` (not `Fatal`) — fixes echo server exit on Windows pipe closure
+- **CI windows-cross-check**: Scoped to foundation crates (`ipcprims-transport`, `ipcprims-frame`) to match local `make check-windows*` targets
+- **npm publish**: Idempotent — skips already-published versions; OIDC npmrc fix ported from sysprims; registry API used for package verification
+- **cbindgen**: 0.29.0 → 0.29.2; header refreshed
+
+### Fixed
+
+- **RUSTSEC-2026-0049**: `rustls-webpki` 0.103.9 → 0.103.10 (CRL distribution point matching)
+- **npm publish E404**: `setup-node` `always-auth=true` override fixed by writing clean `NPM_CONFIG_USERCONFIG`
+- **Windows prepush**: Unix-gated clippy paths caught via `make check-unix-clippy` on Windows hosts
+- **Named pipe write-timeout test**: Handle `Ok(0)` to prevent infinite loop on pipe close
+
+### Known Issues
+
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dep tree. No functional impact.
+
 ## [0.2.0] — 2026-02-26
 
 Tokio-native async API on Unix (UDS), MSRV consistency fixes, and dev tooling improvements.
@@ -52,7 +87,6 @@ Release pipeline: multi-platform FFI build matrix, SBOM generation, and structur
 ### Known Issues
 
 - **Go prebuilt libs**: Not yet populated — `go-bindings.yml` must run before tagging to create prebuilt libs PR. Tracked as v0.1.2 pre-tag checklist item (d4-02).
-- **Async API**: Feature flags declared but no async code exists. Planned for v0.2.0.
 - **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dep tree. No functional impact.
 
 ## [0.1.1] — 2026-02-15
@@ -142,6 +176,7 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
+[0.2.1]: https://github.com/3leaps/ipcprims/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/3leaps/ipcprims/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/3leaps/ipcprims/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/3leaps/ipcprims/compare/v0.1.0...v0.1.1
