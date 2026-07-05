@@ -165,6 +165,10 @@ function startAsyncServer(
             const frame = await serverPeer.recvOnAsync(ipcprims.COMMAND)
             await serverPeer.send(ipcprims.COMMAND, frame.payload)
           }
+          try {
+            await serverPeer.recvAsync()
+          } catch (_) {
+          }
         } else if (workerData.mode === 'delayed') {
           await sleep(250)
           await serverPeer.send(ipcprims.COMMAND, Buffer.from('delayed'))
