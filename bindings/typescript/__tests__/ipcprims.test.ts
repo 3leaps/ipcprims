@@ -462,3 +462,14 @@ test("listener close cancels a pending accept", async () => {
 	await listener.close();
 	await pending;
 });
+
+test("listener close releases the bound endpoint", async () => {
+	const socket = socketPath("async-listener-release");
+	const listener = ipcprims.AsyncListener.bind(socket, { channels: [ipcprims.COMMAND] });
+
+	await listener.close();
+	await assert.rejects(
+		ipcprims.AsyncPeer.connect(socket, [ipcprims.COMMAND]),
+		/connect|failed|ENOENT|No such file|refused/i,
+	);
+});

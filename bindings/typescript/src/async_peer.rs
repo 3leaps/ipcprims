@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use napi::bindgen_prelude::Buffer;
 use napi::{Env, JsFunction, JsObject, JsUnknown, Ref, Result, Status};
 use napi_derive::napi;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Notify};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{invalid_state, to_napi_error};
@@ -52,6 +52,19 @@ struct RecvCancellation {
 struct AbortRegistration {
     signal: Ref<()>,
     listener: Ref<()>,
+}
+
+struct AcceptGuard {
+    active_accepts: Arc<AtomicUsize>,
+    accept_done: Arc<Notify>,
+}
+
+impl Drop for AcceptGuard {
+    fn drop(&mut self) {
+        if self.active_accepts.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.accept_done.notify_waiters();
+        }
+    }
 }
 
 #[napi]
@@ -215,9 +228,11 @@ impl AsyncChannelReceiver {
 
 #[napi]
 pub struct AsyncListener {
-    inner: Arc<ipcprims_peer::AsyncPeerListener>,
+    inner: Arc<StdMutex<Option<Arc<ipcprims_peer::AsyncPeerListener>>>>,
     cancel: CancellationToken,
     closed: Arc<AtomicBool>,
+    active_accepts: Arc<AtomicUsize>,
+    accept_done: Arc<Notify>,
 }
 
 #[napi]
@@ -239,22 +254,41 @@ impl AsyncListener {
         }
 
         Ok(Self {
-            inner: Arc::new(listener),
+            inner: Arc::new(StdMutex::new(Some(Arc::new(listener)))),
             cancel: CancellationToken::new(),
             closed: Arc::new(AtomicBool::new(false)),
+            active_accepts: Arc::new(AtomicUsize::new(0)),
+            accept_done: Arc::new(Notify::new()),
         })
     }
 
     #[napi(ts_return_type = "Promise<AsyncPeer>")]
     pub fn accept(&self, env: Env) -> Result<JsObject> {
-        if self.closed.load(Ordering::SeqCst) {
-            return Err(invalid_state("async listener is closed"));
-        }
-        let inner = Arc::clone(&self.inner);
+        let inner = {
+            let guard = self
+                .inner
+                .lock()
+                .map_err(|_| invalid_state("async listener lock poisoned"))?;
+            if self.closed.load(Ordering::SeqCst) {
+                return Err(invalid_state("async listener is closed"));
+            }
+            let inner = guard
+                .as_ref()
+                .cloned()
+                .ok_or_else(|| invalid_state("async listener is closed"))?;
+            self.active_accepts.fetch_add(1, Ordering::SeqCst);
+            inner
+        };
+        let accept_guard = AcceptGuard {
+            active_accepts: Arc::clone(&self.active_accepts),
+            accept_done: Arc::clone(&self.accept_done),
+        };
         let cancel = self.cancel.clone();
         env.execute_tokio_future(
             async move {
+                let _accept_guard = accept_guard;
                 let peer = tokio::select! {
+                    biased;
                     _ = cancel.cancelled() => {
                         return Err(invalid_state("async listener is closed"));
                     }
@@ -271,7 +305,26 @@ impl AsyncListener {
     pub fn close(&self, env: Env) -> Result<JsObject> {
         self.closed.store(true, Ordering::SeqCst);
         self.cancel.cancel();
-        env.execute_tokio_future(async move { Ok(()) }, |_, ()| Ok(()))
+        let _ = self
+            .inner
+            .lock()
+            .map_err(|_| invalid_state("async listener lock poisoned"))?
+            .take();
+        let active_accepts = Arc::clone(&self.active_accepts);
+        let accept_done = Arc::clone(&self.accept_done);
+        env.execute_tokio_future(
+            async move {
+                loop {
+                    let notified = accept_done.notified();
+                    if active_accepts.load(Ordering::SeqCst) == 0 {
+                        break;
+                    }
+                    notified.await;
+                }
+                Ok(())
+            },
+            |_, ()| Ok(()),
+        )
     }
 }
 
