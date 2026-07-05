@@ -7,10 +7,12 @@ use napi::{Env, JsFunction, JsObject, JsUnknown, Ref, Result, Status};
 use napi_derive::napi;
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio_util::sync::CancellationToken;
+use zeroize::Zeroizing;
 
 use crate::error::{invalid_state, to_napi_error};
 use crate::frame::JsFrame;
 use crate::listener::ListenerOptions;
+use crate::peer::AuthTokenResult;
 
 type AsyncPeerRx = ipcprims_peer::async_peer::AsyncPeerRx;
 type AsyncPeerTx = ipcprims_peer::async_peer::AsyncPeerTx;
@@ -70,18 +72,21 @@ impl Drop for AcceptGuard {
 #[napi]
 pub struct AsyncPeer {
     tx: Arc<StdMutex<Option<AsyncPeerTx>>>,
+    client_auth_token: Arc<StdMutex<Option<Zeroizing<Vec<u8>>>>>,
     dispatch: mpsc::UnboundedSender<DispatchCommand>,
     next_waiter: Arc<AtomicU64>,
     closed: Arc<AtomicBool>,
 }
 
 impl AsyncPeer {
-    fn from_inner(peer: ipcprims_peer::async_peer::AsyncPeer) -> Self {
+    fn from_inner(mut peer: ipcprims_peer::async_peer::AsyncPeer) -> Self {
+        let client_auth_token = peer.take_client_auth_token();
         let (tx, rx) = peer.into_split();
         let (dispatch, commands) = mpsc::unbounded_channel();
         tokio::spawn(dispatch_recv(rx, commands));
         Self {
             tx: Arc::new(StdMutex::new(Some(tx))),
+            client_auth_token: Arc::new(StdMutex::new(client_auth_token)),
             dispatch,
             next_waiter: Arc::new(AtomicU64::new(1)),
             closed: Arc::new(AtomicBool::new(false)),
@@ -107,6 +112,27 @@ impl AsyncPeer {
         let peer = ipcprims_peer::async_connect(&path, &channels)
             .await
             .map_err(|err| to_napi_error("async connect failed", err))?;
+        Ok(Self::from_inner(peer))
+    }
+
+    #[napi(factory)]
+    pub async fn connect_with_auth(
+        path: String,
+        channels: Vec<u16>,
+        auth_token: Buffer,
+    ) -> Result<Self> {
+        if auth_token.is_empty() {
+            return Err(invalid_state("auth token cannot be empty"));
+        }
+
+        let config = ipcprims_peer::HandshakeConfig {
+            auth_token: Some(Zeroizing::new(auth_token.to_vec())),
+            ..ipcprims_peer::HandshakeConfig::default()
+        };
+        let peer =
+            ipcprims_peer::async_connect_with_config(&path, &channels, &config, None, None, None)
+                .await
+                .map_err(|err| to_napi_error("async connectWithAuth failed", err))?;
         Ok(Self::from_inner(peer))
     }
 
@@ -170,6 +196,24 @@ impl AsyncPeer {
             },
             |_, ms| Ok(ms),
         )
+    }
+
+    #[napi]
+    pub fn take_client_auth_token(&self) -> Result<AuthTokenResult> {
+        let mut token = self
+            .client_auth_token
+            .lock()
+            .map_err(|_| invalid_state("async peer auth token lock poisoned"))?;
+        Ok(match token.take() {
+            Some(token) => AuthTokenResult {
+                present: true,
+                token: Some(token.to_vec().into()),
+            },
+            None => AuthTokenResult {
+                present: false,
+                token: None,
+            },
+        })
     }
 
     #[napi(ts_return_type = "Promise<void>")]

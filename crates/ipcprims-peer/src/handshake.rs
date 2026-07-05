@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use bytes::BytesMut;
 use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::error::{PeerError, Result};
 
@@ -17,7 +18,7 @@ const MAX_HANDSHAKE_CHANNELS: usize = 256;
 const MAX_PROTOCOL_LEN: usize = 32;
 const MAX_VERSION_LEN: usize = 16;
 const MAX_PEER_ID_LEN: usize = 128;
-const MAX_AUTH_TOKEN_LEN: usize = 4096;
+pub const MAX_AUTH_TOKEN_LEN: usize = 4096;
 
 /// Client handshake request sent on CONTROL channel.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,8 +31,13 @@ pub struct HandshakeRequest {
     pub channels: Vec<u16>,
     /// Optional authentication token provided by the client.
     /// Treated as opaque credential material and redacted in debug output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_token: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_auth_token",
+        deserialize_with = "deserialize_auth_token"
+    )]
+    pub auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// Server handshake response sent on CONTROL channel.
@@ -57,7 +63,7 @@ pub struct HandshakeResult {
     /// Negotiated channels available after handshake.
     pub negotiated_channels: Vec<u16>,
     /// Client auth token observed by the server side.
-    pub client_auth_token: Option<String>,
+    pub client_auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// Configuration for handshake negotiation.
@@ -75,7 +81,7 @@ pub struct HandshakeConfig {
     pub max_handshake_payload: usize,
     /// Optional auth token sent by the client.
     /// This is transported as plaintext within local IPC and should not be logged.
-    pub auth_token: Option<String>,
+    pub auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl Default for HandshakeConfig {
@@ -103,7 +109,7 @@ impl fmt::Debug for HandshakeRequest {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("auth_token", &Option::<String>::None);
+            dbg.field("auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
     }
@@ -121,7 +127,7 @@ impl fmt::Debug for HandshakeResult {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("client_auth_token", &Option::<String>::None);
+            dbg.field("client_auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
     }
@@ -141,9 +147,101 @@ impl fmt::Debug for HandshakeConfig {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("auth_token", &Option::<String>::None);
+            dbg.field("auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
+    }
+}
+
+fn serialize_auth_token<S>(
+    token: &Option<Zeroizing<Vec<u8>>>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match token {
+        Some(token) => serializer.serialize_bytes(token.as_slice()),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn deserialize_auth_token<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Zeroizing<Vec<u8>>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<SerdeAuthToken>::deserialize(deserializer).map(|token| token.map(|token| token.0))
+}
+
+struct SerdeAuthToken(Zeroizing<Vec<u8>>);
+
+impl<'de> Deserialize<'de> for SerdeAuthToken {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct AuthTokenVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for AuthTokenVisitor {
+            type Value = SerdeAuthToken;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a non-empty byte array auth token")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut token = Zeroizing::new(Vec::new());
+                while let Some(byte) = seq.next_element::<u8>()? {
+                    if token.len() >= MAX_AUTH_TOKEN_LEN {
+                        return Err(serde::de::Error::custom(format!(
+                            "invalid auth_token length: greater than {MAX_AUTH_TOKEN_LEN}"
+                        )));
+                    }
+                    token.push(byte);
+                }
+                validate_auth_token(Some(token.as_slice())).map_err(serde::de::Error::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let token = Zeroizing::new(value.to_vec());
+                validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let token = Zeroizing::new(value);
+                validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_str<E>(self, _value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Err(E::custom("auth_token must be bytes, not a string"))
+            }
+
+            fn visit_string<E>(self, _value: String) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Err(E::custom("auth_token must be bytes, not a string"))
+            }
+        }
+
+        deserializer.deserialize_any(AuthTokenVisitor)
     }
 }
 
@@ -170,7 +268,7 @@ pub fn handshake_client_with_config<R: Read, W: Write>(
 ) -> Result<HandshakeResult> {
     validate_protocol_name(&config.protocol_name)?;
     validate_version(&config.protocol_version)?;
-    validate_auth_token(config.auth_token.as_deref())?;
+    validate_auth_token(config.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     let requested = normalize_channels(requested_channels)?;
 
@@ -276,7 +374,7 @@ pub fn handshake_server_with_config<R: Read, W: Write>(
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
-    validate_auth_token(req.auth_token.as_deref())?;
+    validate_auth_token(req.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     if req.protocol != config.protocol_name {
         return Err(PeerError::HandshakeFailed(format!(
@@ -534,7 +632,7 @@ where
 {
     validate_protocol_name(&config.protocol_name)?;
     validate_version(&config.protocol_version)?;
-    validate_auth_token(config.auth_token.as_deref())?;
+    validate_auth_token(config.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     let requested = normalize_channels(requested_channels)?;
     let req = HandshakeRequest {
@@ -629,7 +727,7 @@ where
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
-    validate_auth_token(req.auth_token.as_deref())?;
+    validate_auth_token(req.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     if req.protocol != config.protocol_name {
         return Err(PeerError::HandshakeFailed(format!(
@@ -736,7 +834,7 @@ fn validate_peer_id(peer_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_auth_token(auth_token: Option<&str>) -> Result<()> {
+fn validate_auth_token(auth_token: Option<&[u8]>) -> Result<()> {
     if let Some(token) = auth_token {
         if token.is_empty() || token.len() > MAX_AUTH_TOKEN_LEN {
             return Err(PeerError::HandshakeFailed(format!(
@@ -892,6 +990,42 @@ mod tests {
     }
 
     #[test]
+    fn legacy_string_auth_token_rejected() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let mut raw_writer = FrameWriter::new(left);
+        raw_writer
+            .send(
+                CONTROL,
+                br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":"token-123"}"#,
+            )
+            .unwrap();
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let result = handshake_server(&mut reader, &mut writer, &[1], "peer-string-token");
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+    }
+
+    #[test]
+    fn present_empty_auth_token_rejected() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let mut raw_writer = FrameWriter::new(left);
+        raw_writer
+            .send(
+                CONTROL,
+                br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":[]}"#,
+            )
+            .unwrap();
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let result = handshake_server(&mut reader, &mut writer, &[1], "peer-empty-token");
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+    }
+
+    #[test]
     fn handshake_timeout() {
         let mut reader = FrameReader::new(AlwaysTimedOutReader);
         let mut writer = FrameWriter::new(Cursor::new(Vec::<u8>::new()));
@@ -986,7 +1120,7 @@ mod tests {
         let mut reader = FrameReader::new(right.try_clone().unwrap());
         let mut writer = FrameWriter::new(right);
         let cfg = HandshakeConfig {
-            auth_token: Some("token-123".to_string()),
+            auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
             ..HandshakeConfig::default()
         };
         let client_result =
@@ -995,8 +1129,41 @@ mod tests {
 
         assert!(client_result.client_auth_token.is_none());
         assert_eq!(
-            server_result.client_auth_token.as_deref(),
-            Some("token-123")
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(b"token-123".as_slice())
+        );
+    }
+
+    #[test]
+    fn auth_token_allows_interior_nul_bytes() {
+        let (left, right) = UnixStream::pair().unwrap();
+
+        let server = thread::spawn(move || {
+            let mut reader = FrameReader::new(left.try_clone().unwrap());
+            let mut writer = FrameWriter::new(left);
+            handshake_server(&mut reader, &mut writer, &[1], "peer-auth").unwrap()
+        });
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let cfg = HandshakeConfig {
+            auth_token: Some(Zeroizing::new(b"token\0with\0nul".to_vec())),
+            ..HandshakeConfig::default()
+        };
+        let client_result =
+            handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg).unwrap();
+        let server_result = server.join().unwrap();
+
+        assert!(client_result.client_auth_token.is_none());
+        assert_eq!(
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(b"token\0with\0nul".as_slice())
         );
     }
 
@@ -1005,7 +1172,7 @@ mod tests {
         let mut reader = FrameReader::new(Cursor::new(Vec::<u8>::new()));
         let mut writer = FrameWriter::new(Cursor::new(Vec::<u8>::new()));
         let cfg = HandshakeConfig {
-            auth_token: Some("x".repeat(MAX_AUTH_TOKEN_LEN + 1)),
+            auth_token: Some(Zeroizing::new(vec![b'x'; MAX_AUTH_TOKEN_LEN + 1])),
             ..HandshakeConfig::default()
         };
         let client_result = handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg);
@@ -1029,7 +1196,7 @@ mod tests {
         let mut reader = FrameReader::new(right.try_clone().unwrap());
         let mut writer = FrameWriter::new(right);
         let cfg = HandshakeConfig {
-            auth_token: Some("a".repeat(256)),
+            auth_token: Some(Zeroizing::new(vec![b'a'; 256])),
             ..HandshakeConfig::default()
         };
         let result = handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg);
@@ -1046,14 +1213,14 @@ mod tests {
             protocol: "ipcprims".to_string(),
             version: "1.0".to_string(),
             channels: vec![1, 2],
-            auth_token: Some("super-secret".to_string()),
+            auth_token: Some(Zeroizing::new(b"super-secret".to_vec())),
         };
         let request_debug = format!("{request:?}");
         assert!(request_debug.contains("<redacted:12 bytes>"));
         assert!(!request_debug.contains("super-secret"));
 
         let config = HandshakeConfig {
-            auth_token: Some("another-secret".to_string()),
+            auth_token: Some(Zeroizing::new(b"another-secret".to_vec())),
             ..HandshakeConfig::default()
         };
         let config_debug = format!("{config:?}");
@@ -1064,7 +1231,7 @@ mod tests {
             peer_id: "peer-1".to_string(),
             protocol_version: "1.0".to_string(),
             negotiated_channels: vec![1],
-            client_auth_token: Some("token-123".to_string()),
+            client_auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
         };
         let result_debug = format!("{result:?}");
         assert!(result_debug.contains("<redacted:9 bytes>"));

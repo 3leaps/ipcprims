@@ -14,7 +14,10 @@ export declare const ERROR: number
 `;
 
 if (!dts.includes("export declare const COMMAND")) {
-	dts = dts.replace("export declare function error(): number\n", `export declare function error(): number\n${constants}`);
+	dts = dts.replace(
+		"export declare function error(): number\n",
+		`export declare function error(): number\n${constants}`,
+	);
 }
 
 dts = dts.replace(

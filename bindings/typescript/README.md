@@ -10,7 +10,7 @@ Use `AsyncPeer` and `AsyncListener` when the process must keep its event loop li
 import { AsyncListener, AsyncPeer, COMMAND } from "@3leaps/ipcprims";
 
 const listener = AsyncListener.bind("/tmp/ipcprims.sock", {
-	channels: [COMMAND],
+  channels: [COMMAND],
 });
 
 const accepted = listener.accept();
@@ -37,8 +37,49 @@ The TypeScript async wrapper owns a small dispatcher above Rust `AsyncPeer` so c
 const receiver = await client.openChannel(COMMAND);
 
 for await (const frame of receiver) {
-	console.log(frame.payload.toString());
+  console.log(frame.payload.toString());
 }
 ```
 
 Passing an already-aborted or later-aborted `AbortSignal` rejects the pending receive without closing the peer, so a later `recvAsync()` or `recvOnAsync()` can still consume future frames.
+
+## Auth Token Checks
+
+Auth tokens are opaque bytes. Use `connectWithAuth()` on the client and `takeClientAuthToken()` on the accepted server peer. Treat an absent token, an empty token, a length mismatch, or a mismatched token as a handshake failure and close the peer before exposing it to application state.
+
+```ts
+import { timingSafeEqual } from "node:crypto";
+import { AsyncListener, AsyncPeer, COMMAND } from "@3leaps/ipcprims";
+
+declare function loadExpectedTokenBytes(): Buffer;
+
+const expected = loadExpectedTokenBytes();
+
+const listener = AsyncListener.bind("/tmp/ipcprims.sock", {
+  channels: [COMMAND],
+});
+const accepted = listener.accept();
+const client = await AsyncPeer.connectWithAuth(
+  "/tmp/ipcprims.sock",
+  [COMMAND],
+  expected,
+);
+const server = await accepted;
+
+const presented = server.takeClientAuthToken();
+const ok =
+  presented.present &&
+  presented.token !== undefined &&
+  presented.token.length > 0 &&
+  presented.token.length === expected.length &&
+  timingSafeEqual(presented.token, expected);
+
+if (!ok) {
+  server.close();
+  client.close();
+  await listener.close();
+  throw new Error("handshake failed");
+}
+```
+
+`crypto.timingSafeEqual()` throws on unequal lengths, so check the length first and reject cleanly. Do not use `==`, string comparison, or `Buffer.equals()` for token authorization.

@@ -76,6 +76,24 @@ impl Default for IpcFrame {
     }
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct IpcAuthToken {
+    pub data: *mut u8,
+    pub len: usize,
+    pub present: bool,
+}
+
+impl Default for IpcAuthToken {
+    fn default() -> Self {
+        Self {
+            data: std::ptr::null_mut(),
+            len: 0,
+            present: false,
+        }
+    }
+}
+
 pub type IpcPeerHandle = *mut c_void;
 pub type IpcListenerHandle = *mut c_void;
 pub type IpcSchemaRegistryHandle = *mut c_void;

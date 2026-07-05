@@ -19,3 +19,4 @@ schema = ["dep:ipcprims-schema", "ipcprims-peer/schema"]
 ipcprims-frame.workspace = true
 ipcprims-peer.workspace = true
 ipcprims-schema = { workspace = true, optional = true }
+zeroize.workspace = true

@@ -3,9 +3,16 @@ use std::sync::Mutex;
 use napi::bindgen_prelude::Buffer;
 use napi::Result;
 use napi_derive::napi;
+use zeroize::Zeroizing;
 
 use crate::error::{invalid_state, to_napi_error};
 use crate::frame::JsFrame;
+
+#[napi(object)]
+pub struct AuthTokenResult {
+    pub present: bool,
+    pub token: Option<Buffer>,
+}
 
 #[napi]
 pub struct Peer {
@@ -37,6 +44,21 @@ impl Peer {
     pub fn connect(path: String, channels: Vec<u16>) -> Result<Self> {
         let peer = ipcprims_peer::connect(&path, &channels)
             .map_err(|err| to_napi_error("connect failed", err))?;
+        Ok(Self::from_inner(peer))
+    }
+
+    #[napi(factory)]
+    pub fn connect_with_auth(path: String, channels: Vec<u16>, auth_token: Buffer) -> Result<Self> {
+        if auth_token.is_empty() {
+            return Err(invalid_state("auth token cannot be empty"));
+        }
+
+        let config = ipcprims_peer::HandshakeConfig {
+            auth_token: Some(Zeroizing::new(auth_token.to_vec())),
+            ..ipcprims_peer::HandshakeConfig::default()
+        };
+        let peer = ipcprims_peer::connect_with_config(&path, &channels, &config, None, None)
+            .map_err(|err| to_napi_error("connectWithAuth failed", err))?;
         Ok(Self::from_inner(peer))
     }
 
@@ -82,6 +104,23 @@ impl Peer {
                 .map_err(|err| to_napi_error("ping failed", err))?;
             let ms = rtt.as_millis();
             Ok(u32::try_from(ms).unwrap_or(u32::MAX))
+        })
+    }
+
+    #[napi]
+    pub fn take_client_auth_token(&self) -> Result<AuthTokenResult> {
+        self.with_peer_mut(|peer| {
+            let token = peer.take_client_auth_token();
+            Ok(match token {
+                Some(token) => AuthTokenResult {
+                    present: true,
+                    token: Some(token.to_vec().into()),
+                },
+                None => AuthTokenResult {
+                    present: false,
+                    token: None,
+                },
+            })
         })
     }
 

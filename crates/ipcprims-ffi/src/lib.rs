@@ -11,15 +11,16 @@ use std::panic::AssertUnwindSafe;
 
 pub use frame::ipc_frame_free;
 pub use peer::{
-    ipc_connect, ipc_listener_accept, ipc_listener_bind, ipc_listener_free, ipc_peer_free,
-    ipc_peer_ping, ipc_peer_recv, ipc_peer_recv_on, ipc_peer_send, ipc_peer_shutdown,
+    ipc_auth_token_free, ipc_connect, ipc_connect_with_auth, ipc_listener_accept,
+    ipc_listener_bind, ipc_listener_free, ipc_peer_free, ipc_peer_ping, ipc_peer_recv,
+    ipc_peer_recv_on, ipc_peer_send, ipc_peer_shutdown, ipc_peer_take_client_auth_token,
 };
 pub use schema::{
     ipc_schema_registry_free, ipc_schema_registry_from_directory, ipc_schema_registry_validate,
 };
 pub use types::IpcSchemaRegistryHandle;
 pub use types::{
-    IpcFrame, IpcListenerHandle, IpcPeerHandle, IpcResult, IPC_CHANNEL_COMMAND,
+    IpcAuthToken, IpcFrame, IpcListenerHandle, IpcPeerHandle, IpcResult, IPC_CHANNEL_COMMAND,
     IPC_CHANNEL_CONTROL, IPC_CHANNEL_DATA, IPC_CHANNEL_ERROR, IPC_CHANNEL_TELEMETRY,
     IPC_ERR_BUFFER_FULL, IPC_ERR_DISCONNECTED, IPC_ERR_FRAME, IPC_ERR_HANDSHAKE_FAILED,
     IPC_ERR_INTERNAL, IPC_ERR_INVALID_ARGUMENT, IPC_ERR_SCHEMA, IPC_ERR_SHUTDOWN_FAILED,

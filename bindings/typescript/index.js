@@ -79,9 +79,10 @@ module.exports = {
 };
 
 if (native.AsyncChannelReceiver) {
-	native.AsyncChannelReceiver.prototype[Symbol.asyncIterator] = async function* () {
-		while (true) {
-			yield await this.recvAsync();
-		}
-	};
+	native.AsyncChannelReceiver.prototype[Symbol.asyncIterator] =
+		async function* () {
+			while (true) {
+				yield await this.recvAsync();
+			}
+		};
 }

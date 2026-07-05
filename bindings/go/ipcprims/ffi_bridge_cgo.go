@@ -92,6 +92,36 @@ func ffiConnect(path string, channels []uint16) (unsafe.Pointer, int32, string) 
 	return unsafe.Pointer(handle), int32(C.IPC_RESULT_OK), ""
 }
 
+func ffiConnectWithAuth(path string, channels []uint16, authToken []byte) (unsafe.Pointer, int32, string) {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	var cChannels *C.uint16_t
+	if len(channels) > 0 {
+		cChannels = (*C.uint16_t)(unsafe.Pointer(&channels[0]))
+	}
+
+	var cAuthToken *C.uint8_t
+	if len(authToken) > 0 {
+		cAuthToken = (*C.uint8_t)(unsafe.Pointer(&authToken[0]))
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	handle := C.ipc_connect_with_auth(
+		cPath,
+		cChannels,
+		C.uintptr_t(len(channels)),
+		cAuthToken,
+		C.uintptr_t(len(authToken)),
+	)
+	if handle == nil {
+		return nil, int32(C.IPC_RESULT_INTERNAL), C.GoString(C.ipc_last_error())
+	}
+	return unsafe.Pointer(handle), int32(C.IPC_RESULT_OK), ""
+}
+
 func ffiPeerSend(peer unsafe.Pointer, channel uint16, payload []byte) (int32, string) {
 	var ptr *C.uint8_t
 	if len(payload) > 0 {
@@ -154,6 +184,26 @@ func ffiPeerShutdown(peer unsafe.Pointer) (int32, string) {
 	return ffiCallResult(func() C.IpcResult {
 		return C.ipc_peer_shutdown((C.IpcPeerHandle)(peer))
 	})
+}
+
+func ffiPeerTakeClientAuthToken(peer unsafe.Pointer) (int32, string, bool, []byte) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	var token C.struct_IpcAuthToken
+	code := C.ipc_peer_take_client_auth_token((C.IpcPeerHandle)(peer), &token)
+	if code != C.IPC_RESULT_OK {
+		return int32(code), C.GoString(C.ipc_last_error()), false, nil
+	}
+	defer C.ipc_auth_token_free(&token)
+
+	if !bool(token.present) {
+		return int32(code), "", false, nil
+	}
+	if token.data == nil || token.len == 0 {
+		return int32(C.IPC_RESULT_INTERNAL), "ipcprims: invalid auth token returned by FFI", false, nil
+	}
+	return int32(code), "", true, C.GoBytes(unsafe.Pointer(token.data), C.int(token.len))
 }
 
 func ffiPeerFree(peer unsafe.Pointer) {

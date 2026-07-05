@@ -12,6 +12,7 @@ parse_deps = false
 include = [
     "IpcResult",
     "IpcFrame",
+    "IpcAuthToken",
     "IpcPeerHandle",
     "IpcListenerHandle",
     "IpcSchemaRegistryHandle",

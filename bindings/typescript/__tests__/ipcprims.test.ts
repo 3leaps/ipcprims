@@ -8,6 +8,7 @@ interface NativePeer {
 	recv(): { channel: number; payload: Buffer };
 	recvOn(channel: number): { channel: number; payload: Buffer };
 	ping(): number;
+	takeClientAuthToken(): { present: boolean; token?: Buffer };
 	close(): void;
 }
 
@@ -18,14 +19,20 @@ interface NativeListener {
 
 interface NativeAsyncPeer {
 	send(channel: number, payload: Buffer): Promise<void>;
-	recvAsync(options?: { signal?: AbortSignal }): Promise<{ channel: number; payload: Buffer }>;
+	recvAsync(options?: {
+		signal?: AbortSignal;
+	}): Promise<{ channel: number; payload: Buffer }>;
 	recvOnAsync(
 		channel: number,
 		options?: { signal?: AbortSignal },
 	): Promise<{ channel: number; payload: Buffer }>;
-	openChannel(channel: number): Promise<AsyncIterable<{ channel: number; payload: Buffer }> & {
-		recvAsync(options?: { signal?: AbortSignal }): Promise<{ channel: number; payload: Buffer }>;
-	}>;
+	openChannel(channel: number): Promise<
+		AsyncIterable<{ channel: number; payload: Buffer }> & {
+			recvAsync(options?: {
+				signal?: AbortSignal;
+			}): Promise<{ channel: number; payload: Buffer }>;
+		}
+	>;
 	close(): void;
 }
 
@@ -42,9 +49,21 @@ const ipcprims = require("../index.js") as {
 	AsyncListener: {
 		bind(path: string, options?: { channels?: number[] }): NativeAsyncListener;
 	};
-	Peer: { connect(path: string, channels: number[]): NativePeer };
+	Peer: {
+		connect(path: string, channels: number[]): NativePeer;
+		connectWithAuth(
+			path: string,
+			channels: number[],
+			authToken: Buffer,
+		): NativePeer;
+	};
 	AsyncPeer: {
 		connect(path: string, channels: number[]): Promise<NativeAsyncPeer>;
+		connectWithAuth(
+			path: string,
+			channels: number[],
+			authToken: Buffer,
+		): Promise<NativeAsyncPeer>;
 	};
 	COMMAND: number;
 	DATA: number;
@@ -54,7 +73,11 @@ function socketPath(tag: string): string {
 	return path.join("/tmp", `ipcp-ts-${process.pid}-${Date.now()}-${tag}.sock`);
 }
 
-function startServer(socket: string, mode: "echo" | "ping") {
+function startServer(
+	socket: string,
+	mode: "echo" | "ping" | "auth",
+	expectedToken?: Buffer,
+) {
 	let readyResolver: (() => void) | undefined;
 	let doneResolver: (() => void) | undefined;
 	let doneRejecter: ((error: Error) => void) | undefined;
@@ -70,6 +93,7 @@ function startServer(socket: string, mode: "echo" | "ping") {
 	const worker = new Worker(
 		`
       const { parentPort, workerData } = require('node:worker_threads')
+      const { timingSafeEqual } = require('node:crypto')
       const ipcprims = require(workerData.modulePath)
 
       try {
@@ -84,6 +108,21 @@ function startServer(socket: string, mode: "echo" | "ping") {
           try {
             serverPeer.recv()
           } catch (_) {
+          }
+        } else if (workerData.mode === 'auth') {
+          const expected = Buffer.from(workerData.expectedToken)
+          const presented = serverPeer.takeClientAuthToken()
+          const ok = presented.present &&
+            presented.token !== undefined &&
+            presented.token.length > 0 &&
+            presented.token.length === expected.length &&
+            timingSafeEqual(presented.token, expected)
+          if (!ok) {
+            throw new Error('auth token mismatch')
+          }
+          const second = serverPeer.takeClientAuthToken()
+          if (second.present || second.token !== undefined) {
+            throw new Error('auth token was not cleared')
           }
         }
 
@@ -100,6 +139,7 @@ function startServer(socket: string, mode: "echo" | "ping") {
 				modulePath: path.resolve(__dirname, "..", "index.js"),
 				socket,
 				mode,
+				expectedToken,
 			},
 		},
 	);
@@ -239,6 +279,42 @@ test("connect/send/recv roundtrip", async () => {
 	await server.done;
 });
 
+test("connectWithAuth exposes token once on server peer", async () => {
+	const socket = socketPath("auth");
+	const token = Buffer.from([0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x00, 0xff]);
+	const server = startServer(socket, "auth", token);
+	await server.ready;
+
+	const client = ipcprims.Peer.connectWithAuth(
+		socket,
+		[ipcprims.COMMAND],
+		token,
+	);
+	client.close();
+	await server.done;
+});
+
+test("connectWithAuth rejects empty auth tokens", async () => {
+	const socket = socketPath("empty-auth");
+	assert.throws(
+		() =>
+			ipcprims.Peer.connectWithAuth(
+				socket,
+				[ipcprims.COMMAND],
+				Buffer.alloc(0),
+			),
+		/auth token cannot be empty/,
+	);
+	await assert.rejects(
+		ipcprims.AsyncPeer.connectWithAuth(
+			socket,
+			[ipcprims.COMMAND],
+			Buffer.alloc(0),
+		),
+		/auth token cannot be empty/,
+	);
+});
+
 test("ping succeeds", async () => {
 	const socket = socketPath("ping");
 	const server = startServer(socket, "ping");
@@ -295,7 +371,10 @@ test("recvAsync observes AbortSignal without closing future receives", async () 
 
 	const alreadyAborted = new AbortController();
 	alreadyAborted.abort();
-	await assert.rejects(() => client.recvAsync({ signal: alreadyAborted.signal }), /receive aborted|Abort/);
+	await assert.rejects(
+		() => client.recvAsync({ signal: alreadyAborted.signal }),
+		/receive aborted|Abort/,
+	);
 
 	const controller = new AbortController();
 	const pending = client.recvAsync({ signal: controller.signal });
@@ -413,7 +492,10 @@ test("concurrent recvOnAsync calls do not starve other channels", async () => {
 	const socket = socketPath("async-concurrent-channels");
 	const server = startAsyncServer(socket, "two-channels");
 	await server.ready;
-	const client = await ipcprims.AsyncPeer.connect(socket, [ipcprims.COMMAND, ipcprims.DATA]);
+	const client = await ipcprims.AsyncPeer.connect(socket, [
+		ipcprims.COMMAND,
+		ipcprims.DATA,
+	]);
 
 	const command = client.recvOnAsync(ipcprims.COMMAND);
 	const data = client.recvOnAsync(ipcprims.DATA);
@@ -442,30 +524,42 @@ test("close cancels a pending recvAsync without throwing", async () => {
 
 test("close disconnects the remote async peer", async () => {
 	const socket = socketPath("async-close-remote");
-	const listener = ipcprims.AsyncListener.bind(socket, { channels: [ipcprims.COMMAND] });
+	const listener = ipcprims.AsyncListener.bind(socket, {
+		channels: [ipcprims.COMMAND],
+	});
 	const accepted = listener.accept();
 	const client = await ipcprims.AsyncPeer.connect(socket, [ipcprims.COMMAND]);
 	const server = await accepted;
 
 	const pending = server.recvAsync();
 	client.close();
-	await assert.rejects(() => pending, /closed|cancelled|receive|async|connection/i);
+	await assert.rejects(
+		() => pending,
+		/closed|cancelled|receive|async|connection/i,
+	);
 	server.close();
 	await listener.close();
 });
 
 test("listener close cancels a pending accept", async () => {
 	const socket = socketPath("async-listener-close");
-	const listener = ipcprims.AsyncListener.bind(socket, { channels: [ipcprims.COMMAND] });
+	const listener = ipcprims.AsyncListener.bind(socket, {
+		channels: [ipcprims.COMMAND],
+	});
 
-	const pending = assert.rejects(listener.accept(), /listener is closed|closed/);
+	const pending = assert.rejects(
+		listener.accept(),
+		/listener is closed|closed/,
+	);
 	await listener.close();
 	await pending;
 });
 
 test("listener close releases the bound endpoint", async () => {
 	const socket = socketPath("async-listener-release");
-	const listener = ipcprims.AsyncListener.bind(socket, { channels: [ipcprims.COMMAND] });
+	const listener = ipcprims.AsyncListener.bind(socket, {
+		channels: [ipcprims.COMMAND],
+	});
 
 	await listener.close();
 	await assert.rejects(

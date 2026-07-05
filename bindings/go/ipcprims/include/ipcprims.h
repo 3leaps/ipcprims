@@ -46,6 +46,12 @@ typedef void *IpcListenerHandle;
 
 typedef void *IpcPeerHandle;
 
+typedef struct IpcAuthToken {
+    uint8_t *data;
+    uintptr_t len;
+    bool present;
+} IpcAuthToken;
+
 typedef void *IpcSchemaRegistryHandle;
 
 
@@ -121,6 +127,21 @@ void ipc_listener_free(IpcListenerHandle listener);
 IpcPeerHandle ipc_connect(const char *path, const uint16_t *channels, uintptr_t num_channels);
 
 /**
+ * Connect to a listener path with an optional opaque auth token.
+ *
+ * # Safety
+ * `path` must be a non-null UTF-8 C string. If `num_channels > 0`, `channels` must be non-null
+ * and point to `num_channels` readable `uint16_t` values. `auth_token == NULL` with
+ * `auth_token_len == 0` means no token; non-null token data must be readable for
+ * `auth_token_len` bytes.
+ */
+IpcPeerHandle ipc_connect_with_auth(const char *path,
+                                    const uint16_t *channels,
+                                    uintptr_t num_channels,
+                                    const uint8_t *auth_token,
+                                    uintptr_t auth_token_len);
+
+/**
  * Send payload bytes on a negotiated channel.
  *
  * # Safety
@@ -162,6 +183,25 @@ IpcResult ipc_peer_ping(IpcPeerHandle peer, uint64_t *out_rtt_ns);
  * `peer` must be a valid peer handle.
  */
 IpcResult ipc_peer_shutdown(IpcPeerHandle peer);
+
+/**
+ * Take and clear the client auth token observed during handshake.
+ *
+ * # Safety
+ * `peer` must be a valid peer handle and `out_token` must be a valid writable pointer.
+ * If `out_token->data` already contains a prior token from this library, it is zeroized and
+ * freed first. Returned token data must be released with `ipc_auth_token_free`.
+ */
+IpcResult ipc_peer_take_client_auth_token(IpcPeerHandle peer, struct IpcAuthToken *out_token);
+
+/**
+ * Zeroize and free token memory returned by `ipc_peer_take_client_auth_token`.
+ *
+ * # Safety
+ * `token` must be null or a valid pointer to an `IpcAuthToken` created by caller code.
+ * If `token->data` is non-null, it must have originated from this library.
+ */
+void ipc_auth_token_free(struct IpcAuthToken *token);
 
 /**
  * Free a peer handle.
