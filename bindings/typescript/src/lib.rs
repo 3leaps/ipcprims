@@ -1,9 +1,11 @@
+mod async_peer;
 mod error;
 mod frame;
 mod listener;
 mod peer;
 mod schema;
 
+pub use async_peer::{AsyncChannelReceiver, AsyncListener, AsyncPeer};
 pub use listener::{Listener, ListenerOptions};
 pub use peer::Peer;
 pub use schema::SchemaRegistry;
