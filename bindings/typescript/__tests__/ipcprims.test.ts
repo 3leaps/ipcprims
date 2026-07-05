@@ -376,13 +376,15 @@ test("AbortSignal listener is removed after successful receive", async () => {
 
 test("async channel receiver iterates FIFO for a channel", async () => {
 	const socket = socketPath("async-iterator");
-	const server = startAsyncServer(socket, "two");
+	const server = startAsyncServer(socket, "echo-two");
 	await server.ready;
 	const client = await ipcprims.AsyncPeer.connect(socket, [ipcprims.COMMAND]);
 	const receiver = await client.openChannel(ipcprims.COMMAND);
 	const iterator = receiver[Symbol.asyncIterator]();
 
+	await client.send(ipcprims.COMMAND, Buffer.from("one"));
 	const first = await iterator.next();
+	await client.send(ipcprims.COMMAND, Buffer.from("two"));
 	const second = await iterator.next();
 	assert.equal(first.value.payload.toString(), "one");
 	assert.equal(second.value.payload.toString(), "two");
