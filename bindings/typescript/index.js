@@ -65,6 +65,9 @@ function loadBinding() {
 const native = loadBinding();
 
 module.exports = {
+	AsyncChannelReceiver: native.AsyncChannelReceiver,
+	AsyncListener: native.AsyncListener,
+	AsyncPeer: native.AsyncPeer,
 	Listener: native.Listener,
 	Peer: native.Peer,
 	SchemaRegistry: native.SchemaRegistry,
@@ -74,3 +77,11 @@ module.exports = {
 	TELEMETRY: native.telemetry(),
 	ERROR: native.error(),
 };
+
+if (native.AsyncChannelReceiver) {
+	native.AsyncChannelReceiver.prototype[Symbol.asyncIterator] = async function* () {
+		while (true) {
+			yield await this.recvAsync();
+		}
+	};
+}

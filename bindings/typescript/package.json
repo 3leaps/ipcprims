@@ -31,6 +31,7 @@
   },
   "scripts": {
     "build:native": "napi build --cargo-cwd . --release --platform --js false --strip",
+    "postbuild:native": "node scripts/augment-types.mjs",
     "test": "npm run build:native && tsc -p tsconfig.test.json && node --test .tmp-test/ipcprims.test.js",
     "typecheck": "tsc --noEmit"
   },

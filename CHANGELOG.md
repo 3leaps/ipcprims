@@ -11,6 +11,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **TypeScript async peer surface**: `AsyncPeer`, `AsyncListener`, `recvAsync`, `recvOnAsync`, async channel receivers, and promise-based send/ping/shutdown backed by Rust `AsyncPeer`; includes `AbortSignal` cancellation for pending receives and Node/Bun timer-liveness coverage.
+
 ## [0.2.1] — 2026-04-04
 
 Windows named pipe transport (sync + async), CI/releng expansion, and developer experience improvements.
@@ -176,6 +182,7 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/3leaps/ipcprims/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/3leaps/ipcprims/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/3leaps/ipcprims/compare/v0.1.1...v0.1.2

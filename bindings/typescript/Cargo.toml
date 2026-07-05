@@ -14,11 +14,13 @@ crate-type = ["cdylib"]
 test = false
 
 [dependencies]
-napi = { version = "2.16.16", default-features = false, features = ["napi8"] }
+napi = { version = "2.16.16", default-features = false, features = ["napi8", "tokio_rt"] }
 napi-derive = "2.16.13"
-ipcprims-peer = { workspace = true, features = ["schema"] }
+ipcprims-peer = { workspace = true, features = ["schema", "async"] }
 ipcprims-frame.workspace = true
 ipcprims-schema.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
 
 [build-dependencies]
 napi-build = "2.1.4"
