@@ -13,14 +13,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-07-06
+
+### Breaking Change
+
+- **Token-bearing handshake wire format**: Token-bearing handshakes now encode `auth_token` as bytes rather than a UTF-8 string. No-auth peers remain compatible, but older token-authenticated peers that send string tokens fail closed. Token-authenticated peers should upgrade both sides together.
+
 ### Added
 
 - **TypeScript async peer surface**: `AsyncPeer`, `AsyncListener`, `recvAsync`, `recvOnAsync`, async channel receivers, and promise-based send/ping/shutdown backed by Rust `AsyncPeer`; includes `AbortSignal` cancellation for pending receives and Node/Bun timer-liveness coverage.
 - **Auth token byte contract**: Rust handshake, C ABI, Go, and TypeScript bindings now carry auth tokens as opaque bytes with zeroizing storage, explicit server-side retrieval, and a dedicated zeroizing free path for FFI token buffers.
-
-### Changed
-
-- **Breaking token-wire change**: Token-bearing handshakes now encode `auth_token` as bytes rather than a UTF-8 string. No-auth peers remain compatible, but older token-authenticated peers that send string tokens fail closed.
 
 ## [0.2.1] — 2026-04-04
 
@@ -187,7 +189,8 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/3leaps/ipcprims/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/3leaps/ipcprims/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/3leaps/ipcprims/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/3leaps/ipcprims/compare/v0.1.1...v0.1.2
