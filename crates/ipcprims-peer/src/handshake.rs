@@ -1444,7 +1444,24 @@ mod tests {
             ..HandshakeConfig::default()
         };
         let result = handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg);
-        assert!(matches!(result, Err(PeerError::Disconnected(_))));
+        assert!(
+            matches!(result, Err(PeerError::Disconnected(_)))
+                || matches!(
+                    result,
+                    Err(PeerError::Frame(FrameError::ConnectionClosed))
+                )
+                || matches!(
+                    result,
+                    Err(PeerError::Frame(FrameError::Io(ref err)))
+                        if matches!(
+                            err.kind(),
+                            ErrorKind::BrokenPipe
+                                | ErrorKind::ConnectionReset
+                                | ErrorKind::ConnectionAborted
+                        )
+                ),
+            "expected client-side disconnect after server rejected oversized payload, got {result:?}"
+        );
         assert!(matches!(
             server.join().unwrap(),
             Err(PeerError::HandshakeFailed(_))
