@@ -4,6 +4,11 @@
 **Date**: 2026-02-09
 **Deciders**: Architecture Council
 
+> **Partial supersession**: ADR-0002 supersedes this record for auth-token
+> representation and FFI export requirements. This record remains authoritative
+> for the mechanism/policy split, local IPC confidentiality assumptions, and
+> replay responsibility.
+
 ## Context
 
 Phase 2 `secrev` review (P2-C) requires explicit handling guidance for:

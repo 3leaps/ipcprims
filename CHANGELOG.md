@@ -16,6 +16,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - **TypeScript async peer surface**: `AsyncPeer`, `AsyncListener`, `recvAsync`, `recvOnAsync`, async channel receivers, and promise-based send/ping/shutdown backed by Rust `AsyncPeer`; includes `AbortSignal` cancellation for pending receives and Node/Bun timer-liveness coverage.
+- **Auth token byte contract**: Rust handshake, C ABI, Go, and TypeScript bindings now carry auth tokens as opaque bytes with zeroizing storage, explicit server-side retrieval, and a dedicated zeroizing free path for FFI token buffers.
+
+### Changed
+
+- **Breaking token-wire change**: Token-bearing handshakes now encode `auth_token` as bytes rather than a UTF-8 string. No-auth peers remain compatible, but older token-authenticated peers that send string tokens fail closed.
 
 ## [0.2.1] — 2026-04-04
 

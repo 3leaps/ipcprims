@@ -6,6 +6,29 @@
 
 ---
 
+## v0.2.2 — Unreleased
+
+Auth-token handshake hardening across Rust, C FFI, Go, and TypeScript bindings.
+
+### Highlights
+
+- **Opaque token bytes**: Auth tokens now cross the Rust handshake, C ABI, Go bindings, and TypeScript bindings as byte buffers instead of strings.
+- **Zeroizing ownership**: ipcprims-owned token buffers use zeroizing storage; FFI token retrieval returns caller-owned bytes that must be released with the dedicated zeroizing token free function.
+- **Explicit server retrieval**: Server peers expose a distinct no-token state and clear stored token material after retrieval.
+- **Binding examples**: Go and TypeScript examples use constant-time comparison patterns with clean length-mismatch rejection before treating a peer as authenticated.
+
+### Breaking Change
+
+- **Token-bearing wire format**: The optional `auth_token` handshake field now carries bytes rather than a UTF-8 string. No-auth peers remain compatible because the field is omitted. Older token-authenticated peers that send string tokens intentionally fail closed.
+
+### Known Issues
+
+- **Cross-version token-authenticated peers**: No known deployed cross-version token-authenticated peers exist for this release window; consumers using token auth should upgrade both sides together.
+
+Full release details: [docs/releases/v0.2.2.md](docs/releases/v0.2.2.md)
+
+---
+
 ## v0.2.1 — 2026-04-04
 
 Windows named pipe transport (sync + async), full Windows CI/releng, and developer experience improvements.
