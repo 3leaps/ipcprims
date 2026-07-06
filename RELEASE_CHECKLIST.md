@@ -169,6 +169,8 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > **Before running**: verify all six npm packages exist. OIDC trusted publishing cannot
 > create new packages — only update existing ones. If any are missing, do the manual first
 > publish first. See `docs/guides/npm-publishing.md` for the full guide.
+> The publish workflow must run with Node.js 22.14.0 or newer and npm 11.5.1 or newer;
+> `make prepush` validates the checked-in workflow prerequisites.
 >
 > ```bash
 > VERSION=$(cat VERSION)

@@ -41,23 +41,46 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       - name: Ensure npm CLI supports OIDC
         run: |
           set -euo pipefail
           echo "npm (before): $(npm --version)"
-          # Trusted publishing requires npm >= 11.5.1
+          # Trusted publishing requires Node.js >= 22.14.0 and npm >= 11.5.1.
           npm install -g npm@11.5.1
           echo "npm (after): $(npm --version)"
       - name: Validate release ref
         run: |
           set -euo pipefail
-          if [ "${GITHUB_REF_TYPE:-}" != "tag" ] && [ -z "${{ inputs.tag }}" ]; then
-            echo "::error::This workflow must run from a tag ref or provide inputs.tag."
-            echo "Re-run it selecting the release tag, or dispatch from main with tag=vX.Y.Z for recovery."
-            exit 1
+          INPUT_TAG="${{ inputs.tag }}"
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            if [ -n "$INPUT_TAG" ] && [ "$INPUT_TAG" != "${GITHUB_REF_NAME}" ]; then
+              echo "::error::Input tag does not match workflow tag ref."
+              echo "input.tag=$INPUT_TAG"
+              echo "ref.tag=${GITHUB_REF_NAME}"
+              exit 1
+            fi
+            exit 0
           fi
+
+          if [ "${GITHUB_REF_TYPE:-}" = "branch" ] && [ "${GITHUB_REF_NAME}" = "$DEFAULT_BRANCH" ] && [ -n "$INPUT_TAG" ]; then
+            echo "Release recovery dispatch from ${DEFAULT_BRANCH} for ${INPUT_TAG}"
+            exit 0
+          fi
+
+          echo "::error::This workflow must run from a tag ref, or from the default branch with inputs.tag for recovery."
+          echo "ref.type=${GITHUB_REF_TYPE:-<unset>}"
+          echo "ref.name=${GITHUB_REF_NAME:-<unset>}"
+          echo "default.branch=${DEFAULT_BRANCH}"
+          if [ -z "$INPUT_TAG" ]; then
+            echo "input.tag=<empty>"
+          else
+            echo "input.tag=$INPUT_TAG"
+          fi
+          exit 1
       - name: Validate release tag and versions
         run: |
           set -euo pipefail

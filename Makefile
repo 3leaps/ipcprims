@@ -13,7 +13,7 @@
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
-.PHONY: precommit prepush deny audit
+.PHONY: precommit prepush npm-publish-prereqs-check deny audit
 .PHONY: msrv
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -457,8 +457,11 @@ dogfood-cli: ## Run end-to-end CLI dogfooding matrix
 precommit: fmt-check lint ## Run pre-commit checks (fast)
 	@echo "[ok] Pre-commit checks passed"
 
-prepush: check version-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
+prepush: check version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
+
+npm-publish-prereqs-check: ## Validate TypeScript npm trusted-publishing workflow prerequisites
+	@./scripts/check-npm-publish-prereqs.sh
 
 # -----------------------------------------------------------------------------
 # Version Management
