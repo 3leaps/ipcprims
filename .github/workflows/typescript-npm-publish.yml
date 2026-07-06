@@ -32,9 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: publish-npm  # Required for npm OIDC trusted publishing
     steps:
-      # Note: Do NOT use fetch-tags here. When running from a tag ref,
-      # it causes a git fetch conflict. The tag is already checked out.
       - uses: actions/checkout@v4
+        with:
+          # Normally this workflow runs from the release tag. For release
+          # recovery, dispatch from main with inputs.tag to use the fixed
+          # workflow while publishing the tagged source tree.
+          ref: ${{ inputs.tag || github.ref }}
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -47,23 +50,20 @@ jobs:
           # Trusted publishing requires npm >= 11.5.1
           npm install -g npm@11.5.1
           echo "npm (after): $(npm --version)"
-      - name: Validate running from a tag ref
+      - name: Validate release ref
         run: |
           set -euo pipefail
-          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
-            echo "::error::This workflow must run from a tag ref (refs/tags/vX.Y.Z)."
-            echo "Re-run it selecting the release tag in the GitHub UI, or trigger it by pushing a v* tag."
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ] && [ -z "${{ inputs.tag }}" ]; then
+            echo "::error::This workflow must run from a tag ref or provide inputs.tag."
+            echo "Re-run it selecting the release tag, or dispatch from main with tag=vX.Y.Z for recovery."
             exit 1
           fi
       - name: Validate release tag and versions
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          if [ -n "${{ inputs.tag }}" ] && [ "${{ inputs.tag }}" != "$TAG" ]; then
-            echo "::error::Input tag does not match workflow ref"
-            echo "input.tag=${{ inputs.tag }}"
-            echo "ref.tag=${TAG}"
-            exit 1
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF_NAME}"
           fi
 
           VERSION_FROM_TAG="${TAG#v}"
@@ -202,7 +202,7 @@ jobs:
           # Use npm install instead of npm ci because platform packages are being
           # published in this workflow and don't exist yet as optional dependencies.
           npm install --omit=optional
-          npm run build
+          npm run build:native
       - name: Publish (dry run)
         if: ${{ inputs.dry_run }}
         run: |
