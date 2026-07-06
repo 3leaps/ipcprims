@@ -7,6 +7,7 @@ Architecture (ADR), Design (DDR), and Security (SDR) decision records for ipcpri
 | ID       | Type     | Title                                                                                                           | Status   | Date       |
 | -------- | -------- | --------------------------------------------------------------------------------------------------------------- | -------- | ---------- |
 | ADR-0001 | Arch     | [AsyncPeer Receive Model (Arrival Order, Split Handles, Bounded Buffers)](ADR-0001-async-peer-receive-model.md) | Proposed | 2026-02-24 |
+| ADR-0002 | Arch     | [Auth Token Handshake FFI Contract](ADR-0002-auth-token-handshake-ffi-contract.md)                              | Proposed | 2026-07-05 |
 | DDR-0001 | Design   | [Transport Scope: IPC-First, Extensible](DDR-0001-transport-scope.md)                                           | Accepted | 2026-02-06 |
 | DDR-0002 | Design   | [CLI Design Precepts](DDR-0002-cli-design-precepts.md)                                                          | Accepted | 2026-02-06 |
 | SDR-0001 | Security | [Schema Validation at IPC Boundary](SDR-0001-schema-validation-scope.md)                                        | Accepted | 2026-02-06 |

@@ -42,6 +42,11 @@ func ffiConnect(_ string, _ []uint16) (unsafe.Pointer, int32, string) {
 	return nil, code, msg
 }
 
+func ffiConnectWithAuth(_ string, _ []uint16, _ []byte) (unsafe.Pointer, int32, string) {
+	code, msg := ffiUnsupported()
+	return nil, code, msg
+}
+
 func ffiPeerSend(_ unsafe.Pointer, _ uint16, _ []byte) (int32, string) { return ffiUnsupported() }
 
 func ffiPeerRecv(_ unsafe.Pointer) (int32, string, uint16, []byte) {
@@ -60,6 +65,11 @@ func ffiPeerPing(_ unsafe.Pointer) (int32, string, uint64) {
 }
 
 func ffiPeerShutdown(_ unsafe.Pointer) (int32, string) { return ffiUnsupported() }
+
+func ffiPeerTakeClientAuthToken(_ unsafe.Pointer) (int32, string, bool, []byte) {
+	code, msg := ffiUnsupported()
+	return code, msg, false, nil
+}
 
 func ffiPeerFree(_ unsafe.Pointer) {}
 

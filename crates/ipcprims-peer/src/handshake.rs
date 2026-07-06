@@ -3,21 +3,21 @@ use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "async")]
 use bytes::BytesMut;
-use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
+use ipcprims_frame::{encode_frame, FrameError, FrameReader, FrameWriter, CONTROL, HEADER_SIZE};
+use serde::de::DeserializeOwned;
+use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::{PeerError, Result};
-
-#[cfg(feature = "async")]
-use ipcprims_frame::HEADER_SIZE;
 
 const MAX_HANDSHAKE_CHANNELS: usize = 256;
 const MAX_PROTOCOL_LEN: usize = 32;
 const MAX_VERSION_LEN: usize = 16;
 const MAX_PEER_ID_LEN: usize = 128;
-const MAX_AUTH_TOKEN_LEN: usize = 4096;
+pub const MAX_AUTH_TOKEN_LEN: usize = 4096;
+const AUTH_TOKEN_HEX_FIELD: &str = "hex";
 
 /// Client handshake request sent on CONTROL channel.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,8 +30,13 @@ pub struct HandshakeRequest {
     pub channels: Vec<u16>,
     /// Optional authentication token provided by the client.
     /// Treated as opaque credential material and redacted in debug output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_token: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_auth_token",
+        deserialize_with = "deserialize_auth_token"
+    )]
+    pub auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// Server handshake response sent on CONTROL channel.
@@ -57,7 +62,7 @@ pub struct HandshakeResult {
     /// Negotiated channels available after handshake.
     pub negotiated_channels: Vec<u16>,
     /// Client auth token observed by the server side.
-    pub client_auth_token: Option<String>,
+    pub client_auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 /// Configuration for handshake negotiation.
@@ -75,7 +80,7 @@ pub struct HandshakeConfig {
     pub max_handshake_payload: usize,
     /// Optional auth token sent by the client.
     /// This is transported as plaintext within local IPC and should not be logged.
-    pub auth_token: Option<String>,
+    pub auth_token: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl Default for HandshakeConfig {
@@ -103,7 +108,7 @@ impl fmt::Debug for HandshakeRequest {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("auth_token", &Option::<String>::None);
+            dbg.field("auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
     }
@@ -121,7 +126,7 @@ impl fmt::Debug for HandshakeResult {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("client_auth_token", &Option::<String>::None);
+            dbg.field("client_auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
     }
@@ -141,9 +146,186 @@ impl fmt::Debug for HandshakeConfig {
                 &format_args!("<redacted:{} bytes>", token.len()),
             );
         } else {
-            dbg.field("auth_token", &Option::<String>::None);
+            dbg.field("auth_token", &Option::<&[u8]>::None);
         }
         dbg.finish()
+    }
+}
+
+fn serialize_auth_token<S>(
+    token: &Option<Zeroizing<Vec<u8>>>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match token {
+        Some(token) => {
+            let encoded = encode_auth_token_hex(token.as_slice());
+            let mut map = serializer.serialize_map(Some(1))?;
+            map.serialize_entry(AUTH_TOKEN_HEX_FIELD, encoded.as_str())?;
+            map.end()
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
+fn deserialize_auth_token<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Zeroizing<Vec<u8>>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<SerdeAuthToken>::deserialize(deserializer).map(|token| token.map(|token| token.0))
+}
+
+struct SerdeAuthToken(Zeroizing<Vec<u8>>);
+
+fn encode_auth_token_hex(token: &[u8]) -> Zeroizing<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut encoded = String::with_capacity(token.len() * 2);
+    for byte in token {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Zeroizing::new(encoded)
+}
+
+fn decode_auth_token_hex<E>(
+    encoded: Zeroizing<String>,
+) -> std::result::Result<Zeroizing<Vec<u8>>, E>
+where
+    E: serde::de::Error,
+{
+    if encoded.len() % 2 != 0 {
+        return Err(E::custom("auth_token hex length must be even"));
+    }
+
+    let decoded_len = encoded.len() / 2;
+    if decoded_len > MAX_AUTH_TOKEN_LEN {
+        return Err(E::custom(format!(
+            "invalid auth_token length: greater than {MAX_AUTH_TOKEN_LEN}"
+        )));
+    }
+
+    let mut token = Zeroizing::new(Vec::with_capacity(decoded_len));
+    for chunk in encoded.as_bytes().chunks_exact(2) {
+        let high = decode_hex_digit::<E>(chunk[0])?;
+        let low = decode_hex_digit::<E>(chunk[1])?;
+        token.push((high << 4) | low);
+    }
+
+    validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+    Ok(token)
+}
+
+fn decode_hex_digit<E>(digit: u8) -> std::result::Result<u8, E>
+where
+    E: serde::de::Error,
+{
+    match digit {
+        b'0'..=b'9' => Ok(digit - b'0'),
+        b'a'..=b'f' => Ok(digit - b'a' + 10),
+        b'A'..=b'F' => Ok(digit - b'A' + 10),
+        _ => Err(E::custom("auth_token hex contains a non-hex digit")),
+    }
+}
+
+impl<'de> Deserialize<'de> for SerdeAuthToken {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct AuthTokenVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for AuthTokenVisitor {
+            type Value = SerdeAuthToken;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a non-empty hex-encoded auth token object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut encoded = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        AUTH_TOKEN_HEX_FIELD => {
+                            if encoded.is_some() {
+                                return Err(serde::de::Error::duplicate_field(
+                                    AUTH_TOKEN_HEX_FIELD,
+                                ));
+                            }
+                            encoded = Some(Zeroizing::new(map.next_value::<String>()?));
+                        }
+                        _ => {
+                            return Err(serde::de::Error::unknown_field(
+                                &key,
+                                &[AUTH_TOKEN_HEX_FIELD],
+                            ));
+                        }
+                    }
+                }
+
+                let encoded =
+                    encoded.ok_or_else(|| serde::de::Error::missing_field(AUTH_TOKEN_HEX_FIELD))?;
+                decode_auth_token_hex(encoded).map(SerdeAuthToken)
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut token = Zeroizing::new(Vec::new());
+                while let Some(byte) = seq.next_element::<u8>()? {
+                    if token.len() >= MAX_AUTH_TOKEN_LEN {
+                        return Err(serde::de::Error::custom(format!(
+                            "invalid auth_token length: greater than {MAX_AUTH_TOKEN_LEN}"
+                        )));
+                    }
+                    token.push(byte);
+                }
+                validate_auth_token(Some(token.as_slice())).map_err(serde::de::Error::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_bytes<E>(self, value: &[u8]) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let token = Zeroizing::new(value.to_vec());
+                validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_byte_buf<E>(self, value: Vec<u8>) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let token = Zeroizing::new(value);
+                validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+                Ok(SerdeAuthToken(token))
+            }
+
+            fn visit_str<E>(self, _value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Err(E::custom("auth_token must be bytes, not a string"))
+            }
+
+            fn visit_string<E>(self, _value: String) -> std::result::Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Err(E::custom("auth_token must be bytes, not a string"))
+            }
+        }
+
+        deserializer.deserialize_any(AuthTokenVisitor)
     }
 }
 
@@ -170,7 +352,7 @@ pub fn handshake_client_with_config<R: Read, W: Write>(
 ) -> Result<HandshakeResult> {
     validate_protocol_name(&config.protocol_name)?;
     validate_version(&config.protocol_version)?;
-    validate_auth_token(config.auth_token.as_deref())?;
+    validate_auth_token(config.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     let requested = normalize_channels(requested_channels)?;
 
@@ -184,13 +366,13 @@ pub fn handshake_client_with_config<R: Read, W: Write>(
     send_control_json(writer, &req)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload(
+    let mut payload = recv_control_payload(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )?;
-    let resp: HandshakeResponse = serde_json::from_slice(&payload)?;
+    let resp: HandshakeResponse = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&resp.protocol)?;
     validate_version(&resp.version)?;
@@ -266,17 +448,17 @@ pub fn handshake_server_with_config<R: Read, W: Write>(
     let supported = normalize_channels(supported_channels)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload(
+    let mut payload = recv_control_payload(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )?;
-    let req: HandshakeRequest = serde_json::from_slice(&payload)?;
+    let req: HandshakeRequest = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
-    validate_auth_token(req.auth_token.as_deref())?;
+    validate_auth_token(req.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     if req.protocol != config.protocol_name {
         return Err(PeerError::HandshakeFailed(format!(
@@ -318,9 +500,47 @@ pub fn handshake_server_with_config<R: Read, W: Write>(
 }
 
 fn send_control_json<T: Serialize, W: Write>(writer: &mut FrameWriter<W>, value: &T) -> Result<()> {
-    let payload = serde_json::to_vec(value)?;
-    writer.send(CONTROL, &payload)?;
+    let mut payload = serde_json::to_vec(value)?;
+    let mut buf = BytesMut::new();
+    let encode_result = encode_frame(CONTROL, &payload, &mut buf);
+    payload.zeroize();
+    encode_result.map_err(PeerError::Frame)?;
+
+    let write_result = write_all_handshake(writer.get_mut(), buf.as_ref());
+    buf.as_mut().zeroize();
+    write_result?;
+    flush_handshake(writer.get_mut())
+}
+
+fn parse_control_json<T: DeserializeOwned>(payload: &mut Vec<u8>) -> Result<T> {
+    let parsed = serde_json::from_slice(payload);
+    payload.zeroize();
+    Ok(parsed?)
+}
+
+fn write_all_handshake<W: Write>(writer: &mut W, buf: &[u8]) -> Result<()> {
+    let mut offset = 0usize;
+    while offset < buf.len() {
+        match writer.write(&buf[offset..]) {
+            Ok(0) => return Err(PeerError::Frame(FrameError::ConnectionClosed)),
+            Ok(n) => offset += n,
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
+        }
+    }
     Ok(())
+}
+
+fn flush_handshake<W: Write>(writer: &mut W) -> Result<()> {
+    loop {
+        match writer.flush() {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
+        }
+    }
 }
 
 #[cfg(feature = "async")]
@@ -335,13 +555,17 @@ async fn send_control_json_async<W: tokio::io::AsyncWrite + Unpin>(
         return Err(PeerError::Timeout(timeout));
     }
 
-    let payload = serde_json::to_vec(value)?;
+    let mut payload = serde_json::to_vec(value)?;
     let mut buf = BytesMut::new();
-    ipcprims_frame::encode_frame(CONTROL, &payload, &mut buf).map_err(PeerError::Frame)?;
+    let encode_result = encode_frame(CONTROL, &payload, &mut buf);
+    payload.zeroize();
+    encode_result.map_err(PeerError::Frame)?;
 
     let remaining = deadline.saturating_duration_since(now);
-    tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::write_all(writer, &buf))
-        .await
+    let write_result =
+        tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::write_all(writer, &buf)).await;
+    buf.as_mut().zeroize();
+    write_result
         .map_err(|_| PeerError::Timeout(timeout))?
         .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
 
@@ -408,41 +632,67 @@ fn recv_control_payload<R: Read>(
     timeout: Duration,
     max_handshake_payload: usize,
 ) -> Result<Vec<u8>> {
-    loop {
+    let mut header = [0u8; HEADER_SIZE];
+    read_exact_handshake(reader.get_mut(), &mut header, deadline, timeout)?;
+
+    if header[0..2] != [0x49, 0x50] {
+        return Err(PeerError::Frame(FrameError::InvalidMagic));
+    }
+
+    let payload_len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
+    let channel = u16::from_le_bytes(header[6..8].try_into().unwrap());
+
+    if channel != CONTROL {
+        return Err(PeerError::HandshakeFailed(format!(
+            "expected CONTROL channel {}, got {}",
+            CONTROL, channel
+        )));
+    }
+
+    if payload_len > max_handshake_payload {
+        return Err(PeerError::HandshakeFailed(format!(
+            "handshake payload too large: {} (max {})",
+            payload_len, max_handshake_payload
+        )));
+    }
+
+    let mut payload = vec![0u8; payload_len];
+    if let Err(err) = read_exact_handshake(reader.get_mut(), &mut payload, deadline, timeout) {
+        payload.zeroize();
+        return Err(err);
+    }
+    Ok(payload)
+}
+
+fn read_exact_handshake<R: Read>(
+    reader: &mut R,
+    buf: &mut [u8],
+    deadline: Instant,
+    timeout: Duration,
+) -> Result<()> {
+    let mut offset = 0usize;
+    while offset < buf.len() {
         if Instant::now() >= deadline {
             return Err(PeerError::Timeout(timeout));
         }
 
-        match reader.read_frame() {
-            Ok(frame) => {
-                if frame.channel != CONTROL {
-                    return Err(PeerError::HandshakeFailed(format!(
-                        "expected CONTROL channel {}, got {}",
-                        CONTROL, frame.channel
-                    )));
-                }
-                if frame.payload.len() > max_handshake_payload {
-                    return Err(PeerError::HandshakeFailed(format!(
-                        "handshake payload too large: {} (max {})",
-                        frame.payload.len(),
-                        max_handshake_payload
-                    )));
-                }
-                return Ok(frame.payload.to_vec());
-            }
-            Err(FrameError::Io(err))
-                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::TimedOut =>
-            {
-                continue;
-            }
-            Err(FrameError::ConnectionClosed) => {
+        match reader.read(&mut buf[offset..]) {
+            Ok(0) => {
                 return Err(PeerError::Disconnected(
                     "connection closed during handshake".to_string(),
                 ));
             }
-            Err(err) => return Err(PeerError::Frame(err)),
+            Ok(n) => offset += n,
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err)
+                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::TimedOut =>
+            {
+                continue;
+            }
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
         }
     }
+    Ok(())
 }
 
 #[cfg(feature = "async")]
@@ -503,19 +753,26 @@ async fn recv_control_payload_async<R: tokio::io::AsyncRead + Unpin>(
     let remaining = deadline - now;
 
     let mut payload = vec![0u8; payload_len];
-    tokio::time::timeout(
+    let read_result = tokio::time::timeout(
         remaining,
         tokio::io::AsyncReadExt::read_exact(reader, &mut payload),
     )
-    .await
-    .map_err(|_| PeerError::Timeout(timeout))?
-    .map_err(|e| {
-        if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            PeerError::Disconnected("connection closed during handshake".to_string())
-        } else {
-            PeerError::Frame(FrameError::Io(e))
-        }
-    })?;
+    .await;
+    let read_result = read_result
+        .map_err(|_| PeerError::Timeout(timeout))
+        .and_then(|result| {
+            result.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    PeerError::Disconnected("connection closed during handshake".to_string())
+                } else {
+                    PeerError::Frame(FrameError::Io(e))
+                }
+            })
+        });
+    if let Err(err) = read_result {
+        payload.zeroize();
+        return Err(err);
+    }
 
     Ok(payload)
 }
@@ -534,7 +791,7 @@ where
 {
     validate_protocol_name(&config.protocol_name)?;
     validate_version(&config.protocol_version)?;
-    validate_auth_token(config.auth_token.as_deref())?;
+    validate_auth_token(config.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     let requested = normalize_channels(requested_channels)?;
     let req = HandshakeRequest {
@@ -546,14 +803,14 @@ where
 
     let deadline = Instant::now() + config.timeout;
     send_control_json_async(writer, &req, deadline, config.timeout).await?;
-    let payload = recv_control_payload_async(
+    let mut payload = recv_control_payload_async(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )
     .await?;
-    let resp: HandshakeResponse = serde_json::from_slice(&payload)?;
+    let resp: HandshakeResponse = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&resp.protocol)?;
     validate_version(&resp.version)?;
@@ -618,18 +875,18 @@ where
     let supported = normalize_channels(supported_channels)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload_async(
+    let mut payload = recv_control_payload_async(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )
     .await?;
-    let req: HandshakeRequest = serde_json::from_slice(&payload)?;
+    let req: HandshakeRequest = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
-    validate_auth_token(req.auth_token.as_deref())?;
+    validate_auth_token(req.auth_token.as_ref().map(|token| token.as_slice()))?;
 
     if req.protocol != config.protocol_name {
         return Err(PeerError::HandshakeFailed(format!(
@@ -736,7 +993,7 @@ fn validate_peer_id(peer_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_auth_token(auth_token: Option<&str>) -> Result<()> {
+fn validate_auth_token(auth_token: Option<&[u8]>) -> Result<()> {
     if let Some(token) = auth_token {
         if token.is_empty() || token.len() > MAX_AUTH_TOKEN_LEN {
             return Err(PeerError::HandshakeFailed(format!(
@@ -892,6 +1149,95 @@ mod tests {
     }
 
     #[test]
+    fn legacy_string_auth_token_rejected() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let mut raw_writer = FrameWriter::new(left);
+        raw_writer
+            .send(
+                CONTROL,
+                br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":"token-123"}"#,
+            )
+            .unwrap();
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let result = handshake_server(&mut reader, &mut writer, &[1], "peer-string-token");
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+    }
+
+    #[test]
+    fn present_empty_auth_token_rejected() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let mut raw_writer = FrameWriter::new(left);
+        raw_writer
+            .send(
+                CONTROL,
+                br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":[]}"#,
+            )
+            .unwrap();
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let result = handshake_server(&mut reader, &mut writer, &[1], "peer-empty-token");
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+    }
+
+    #[test]
+    fn auth_token_serializes_compactly_under_default_payload_cap() {
+        let request = HandshakeRequest {
+            protocol: "ipcprims".to_string(),
+            version: "1.0".to_string(),
+            channels: vec![1],
+            auth_token: Some(Zeroizing::new(vec![0xff; MAX_AUTH_TOKEN_LEN])),
+        };
+
+        let payload = serde_json::to_vec(&request).expect("request should serialize");
+        assert!(
+            payload.len() <= HandshakeConfig::default().max_handshake_payload,
+            "serialized payload length {} exceeded default cap",
+            payload.len()
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_slice(&payload).expect("request should be valid JSON");
+        assert_eq!(value["auth_token"]["hex"].as_str().unwrap().len(), 8192);
+    }
+
+    #[test]
+    fn parse_control_json_zeroizes_payload_after_success() {
+        let request = HandshakeRequest {
+            protocol: "ipcprims".to_string(),
+            version: "1.0".to_string(),
+            channels: vec![1],
+            auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
+        };
+        let mut payload = serde_json::to_vec(&request).expect("request should serialize");
+
+        let parsed: HandshakeRequest =
+            parse_control_json(&mut payload).expect("request should parse");
+
+        assert_eq!(
+            parsed.auth_token.as_ref().map(|token| token.as_slice()),
+            Some(b"token-123".as_slice())
+        );
+        assert!(payload.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn parse_control_json_zeroizes_payload_after_error() {
+        let mut payload =
+            br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":"legacy"}"#
+                .to_vec();
+
+        let result = parse_control_json::<HandshakeRequest>(&mut payload);
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+        assert!(payload.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
     fn handshake_timeout() {
         let mut reader = FrameReader::new(AlwaysTimedOutReader);
         let mut writer = FrameWriter::new(Cursor::new(Vec::<u8>::new()));
@@ -986,7 +1332,7 @@ mod tests {
         let mut reader = FrameReader::new(right.try_clone().unwrap());
         let mut writer = FrameWriter::new(right);
         let cfg = HandshakeConfig {
-            auth_token: Some("token-123".to_string()),
+            auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
             ..HandshakeConfig::default()
         };
         let client_result =
@@ -995,8 +1341,73 @@ mod tests {
 
         assert!(client_result.client_auth_token.is_none());
         assert_eq!(
-            server_result.client_auth_token.as_deref(),
-            Some("token-123")
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(b"token-123".as_slice())
+        );
+    }
+
+    #[test]
+    fn auth_token_allows_interior_nul_bytes() {
+        let (left, right) = UnixStream::pair().unwrap();
+
+        let server = thread::spawn(move || {
+            let mut reader = FrameReader::new(left.try_clone().unwrap());
+            let mut writer = FrameWriter::new(left);
+            handshake_server(&mut reader, &mut writer, &[1], "peer-auth").unwrap()
+        });
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let cfg = HandshakeConfig {
+            auth_token: Some(Zeroizing::new(b"token\0with\0nul".to_vec())),
+            ..HandshakeConfig::default()
+        };
+        let client_result =
+            handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg).unwrap();
+        let server_result = server.join().unwrap();
+
+        assert!(client_result.client_auth_token.is_none());
+        assert_eq!(
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(b"token\0with\0nul".as_slice())
+        );
+    }
+
+    #[test]
+    fn max_auth_token_passthrough() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let expected = vec![0xff; MAX_AUTH_TOKEN_LEN];
+        let expected_server = expected.clone();
+
+        let server = thread::spawn(move || {
+            let mut reader = FrameReader::new(left.try_clone().unwrap());
+            let mut writer = FrameWriter::new(left);
+            handshake_server(&mut reader, &mut writer, &[1], "peer-auth-max").unwrap()
+        });
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let cfg = HandshakeConfig {
+            auth_token: Some(Zeroizing::new(expected)),
+            ..HandshakeConfig::default()
+        };
+        let client_result =
+            handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg).unwrap();
+        let server_result = server.join().unwrap();
+
+        assert!(client_result.client_auth_token.is_none());
+        assert_eq!(
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(expected_server.as_slice())
         );
     }
 
@@ -1005,7 +1416,7 @@ mod tests {
         let mut reader = FrameReader::new(Cursor::new(Vec::<u8>::new()));
         let mut writer = FrameWriter::new(Cursor::new(Vec::<u8>::new()));
         let cfg = HandshakeConfig {
-            auth_token: Some("x".repeat(MAX_AUTH_TOKEN_LEN + 1)),
+            auth_token: Some(Zeroizing::new(vec![b'x'; MAX_AUTH_TOKEN_LEN + 1])),
             ..HandshakeConfig::default()
         };
         let client_result = handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg);
@@ -1029,11 +1440,28 @@ mod tests {
         let mut reader = FrameReader::new(right.try_clone().unwrap());
         let mut writer = FrameWriter::new(right);
         let cfg = HandshakeConfig {
-            auth_token: Some("a".repeat(256)),
+            auth_token: Some(Zeroizing::new(vec![b'a'; 256])),
             ..HandshakeConfig::default()
         };
         let result = handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg);
-        assert!(matches!(result, Err(PeerError::Disconnected(_))));
+        assert!(
+            matches!(result, Err(PeerError::Disconnected(_)))
+                || matches!(
+                    result,
+                    Err(PeerError::Frame(FrameError::ConnectionClosed))
+                )
+                || matches!(
+                    result,
+                    Err(PeerError::Frame(FrameError::Io(ref err)))
+                        if matches!(
+                            err.kind(),
+                            ErrorKind::BrokenPipe
+                                | ErrorKind::ConnectionReset
+                                | ErrorKind::ConnectionAborted
+                        )
+                ),
+            "expected client-side disconnect after server rejected oversized payload, got {result:?}"
+        );
         assert!(matches!(
             server.join().unwrap(),
             Err(PeerError::HandshakeFailed(_))
@@ -1046,14 +1474,14 @@ mod tests {
             protocol: "ipcprims".to_string(),
             version: "1.0".to_string(),
             channels: vec![1, 2],
-            auth_token: Some("super-secret".to_string()),
+            auth_token: Some(Zeroizing::new(b"super-secret".to_vec())),
         };
         let request_debug = format!("{request:?}");
         assert!(request_debug.contains("<redacted:12 bytes>"));
         assert!(!request_debug.contains("super-secret"));
 
         let config = HandshakeConfig {
-            auth_token: Some("another-secret".to_string()),
+            auth_token: Some(Zeroizing::new(b"another-secret".to_vec())),
             ..HandshakeConfig::default()
         };
         let config_debug = format!("{config:?}");
@@ -1064,7 +1492,7 @@ mod tests {
             peer_id: "peer-1".to_string(),
             protocol_version: "1.0".to_string(),
             negotiated_channels: vec![1],
-            client_auth_token: Some("token-123".to_string()),
+            client_auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
         };
         let result_debug = format!("{result:?}");
         assert!(result_debug.contains("<redacted:9 bytes>"));

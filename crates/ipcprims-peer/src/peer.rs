@@ -6,6 +6,7 @@ use ipcprims_frame::{Frame, FrameError, FrameReader, FrameWriter, COMMAND, CONTR
 use ipcprims_transport::IpcStream;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use zeroize::Zeroizing;
 
 use crate::control::{
     ControlMessage, CONTROL_PING, CONTROL_PONG, CONTROL_SHUTDOWN_ACK, CONTROL_SHUTDOWN_FORCE,
@@ -68,7 +69,7 @@ pub struct Peer {
     reader: FrameReader<IpcStream>,
     writer: FrameWriter<IpcStream>,
     handshake_result: HandshakeResult,
-    client_auth_token: Option<String>,
+    client_auth_token: Option<Zeroizing<Vec<u8>>>,
     #[cfg_attr(not(unix), allow(dead_code))]
     schema_registry: Option<SchemaRegistryHandle>,
     channel_buffers: HashMap<u16, VecDeque<Frame>>,
@@ -252,12 +253,14 @@ impl Peer {
     }
 
     /// Client auth token observed during handshake, if present.
-    pub fn client_auth_token(&self) -> Option<&str> {
-        self.client_auth_token.as_deref()
+    pub fn client_auth_token(&self) -> Option<&[u8]> {
+        self.client_auth_token
+            .as_ref()
+            .map(|token| token.as_slice())
     }
 
     /// Take and clear the client auth token from this peer.
-    pub fn take_client_auth_token(&mut self) -> Option<String> {
+    pub fn take_client_auth_token(&mut self) -> Option<Zeroizing<Vec<u8>>> {
         self.client_auth_token.take()
     }
 
@@ -794,18 +797,21 @@ mod tests {
     #[test]
     fn take_client_auth_token_clears_stored_token() {
         let (mut peer, _) = peer_pair(PeerConfig::default());
-        peer.client_auth_token = Some("token-123".to_string());
+        peer.client_auth_token = Some(Zeroizing::new(b"token-123".to_vec()));
 
-        assert_eq!(peer.client_auth_token(), Some("token-123"));
+        assert_eq!(peer.client_auth_token(), Some(b"token-123".as_slice()));
         let taken = peer.take_client_auth_token();
-        assert_eq!(taken.as_deref(), Some("token-123"));
+        assert_eq!(
+            taken.as_ref().map(|token| token.as_slice()),
+            Some(b"token-123".as_slice())
+        );
         assert_eq!(peer.client_auth_token(), None);
     }
 
     #[test]
     fn handshake_result_does_not_expose_token_material() {
         let (mut peer, _) = peer_pair(PeerConfig::default());
-        peer.client_auth_token = Some("token-123".to_string());
+        peer.client_auth_token = Some(Zeroizing::new(b"token-123".to_vec()));
         assert_eq!(peer.handshake_result().client_auth_token, None);
     }
 

@@ -29,6 +29,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, oneshot, watch, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
+use zeroize::Zeroizing;
 
 use crate::control::{
     ControlMessage, CONTROL_PING, CONTROL_PONG, CONTROL_SHUTDOWN_ACK, CONTROL_SHUTDOWN_FORCE,
@@ -532,6 +533,17 @@ impl AsyncPeer {
 
     pub fn handshake_result(&self) -> &HandshakeResult {
         &self.handshake
+    }
+
+    pub fn client_auth_token(&self) -> Option<&[u8]> {
+        self.handshake
+            .client_auth_token
+            .as_ref()
+            .map(|token| token.as_slice())
+    }
+
+    pub fn take_client_auth_token(&mut self) -> Option<Zeroizing<Vec<u8>>> {
+        self.handshake.client_auth_token.take()
     }
 
     pub fn into_split(self) -> (AsyncPeerTx, AsyncPeerRx) {

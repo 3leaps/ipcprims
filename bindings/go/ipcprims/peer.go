@@ -31,6 +31,24 @@ func Connect(path string, channels []uint16) (*Peer, error) {
 	return peer, nil
 }
 
+// ConnectWithAuth dials a listener path and sends opaque auth token bytes.
+func ConnectWithAuth(path string, channels []uint16, authToken []byte) (*Peer, error) {
+	if len(authToken) == 0 {
+		return nil, &Error{Code: ErrInvalidArgument, Message: "auth token cannot be empty"}
+	}
+
+	handle, code, msg := ffiConnectWithAuth(path, channels, authToken)
+	if err := checkResult(code, msg); err != nil {
+		return nil, err
+	}
+
+	peer := &Peer{handle: handle}
+	runtime.SetFinalizer(peer, func(p *Peer) {
+		_ = p.Close()
+	})
+	return peer, nil
+}
+
 // Send transmits payload bytes on a channel.
 func (p *Peer) Send(channel uint16, data []byte) error {
 	handle, err := p.getHandle()
@@ -82,6 +100,23 @@ func (p *Peer) Ping() (time.Duration, error) {
 		return 0, err
 	}
 	return time.Duration(rttNs), nil
+}
+
+// TakeClientAuthToken returns the client token observed during handshake.
+//
+// The bool return is false when no token was presented. Empty presented tokens
+// are rejected by ipcprims and are never collapsed into the no-token state.
+func (p *Peer) TakeClientAuthToken() ([]byte, bool, error) {
+	handle, err := p.getHandle()
+	if err != nil {
+		return nil, false, err
+	}
+
+	code, msg, present, token := ffiPeerTakeClientAuthToken(handle)
+	if err := checkResult(code, msg); err != nil {
+		return nil, false, err
+	}
+	return token, present, nil
 }
 
 // Shutdown performs graceful peer shutdown.

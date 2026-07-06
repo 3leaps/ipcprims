@@ -21,6 +21,7 @@ ipcprims-frame.workspace = true
 ipcprims-schema.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+zeroize.workspace = true
 
 [build-dependencies]
 napi-build = "2.1.4"

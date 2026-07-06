@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const dtsPath = path.join(dir, "..", "index.d.ts");
@@ -14,7 +15,10 @@ export declare const ERROR: number
 `;
 
 if (!dts.includes("export declare const COMMAND")) {
-	dts = dts.replace("export declare function error(): number\n", `export declare function error(): number\n${constants}`);
+	dts = dts.replace(
+		"export declare function error(): number\n",
+		`export declare function error(): number\n${constants}`,
+	);
 }
 
 dts = dts.replace(
@@ -23,3 +27,19 @@ dts = dts.replace(
 );
 
 writeFileSync(dtsPath, dts);
+
+const format = spawnSync(
+	"goneat",
+	["--log-level", "error", "format", "--files", dtsPath, "--quiet"],
+	{
+		stdio: "inherit",
+	},
+);
+
+if (format.error && format.error.code !== "ENOENT") {
+	throw format.error;
+}
+
+if (!format.error && format.status !== 0) {
+	process.exit(format.status ?? 1);
+}
