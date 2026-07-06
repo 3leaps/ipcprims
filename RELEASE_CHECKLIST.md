@@ -18,6 +18,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
   - Syncs `Cargo.toml` workspace, `Cargo.lock`, and all `bindings/typescript` `package.json` files
   - **Do not skip**: version drift between `VERSION` and `Cargo.toml` is a hard failure in `make prepush`
 - [ ] Update `CHANGELOG.md` (move Unreleased section to new version heading)
+  - **Do not skip footer links**: add `[X.Y.Z]` compare link and re-anchor `[Unreleased]` to compare from the new tag to `HEAD`
 - [ ] Create release notes: `docs/releases/vX.Y.Z.md`
 
 ### Pre-Tag Quality Gates
@@ -70,6 +71,10 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 > release. It is NOT optional for v0.1.2+. The workflow builds fresh prebuilt libs from the
 > current source — the libs committed to `bindings/go/ipcprims/lib/` in the previous release
 > are stale and must be rebuilt.
+>
+> **Ordering guardrail**: merge the version/changelog/release-notes PR to `main` before
+> running the Go bindings workflow. The workflow builds from `main`; running it before the
+> version PR lands produces prebuilt Go libs with the wrong embedded version.
 >
 > **Do not sign until this is complete.** Signing against a tag that has stale FFI libs means
 > Go consumers get the wrong binaries.
