@@ -13,6 +13,7 @@ permissions:
   actions: write
 env:
   CARGO_TERM_COLOR: always
+  CBINDGEN_VERSION: "0.29.2"
 jobs:
   validate:
     name: Validate Inputs
@@ -218,6 +219,9 @@ jobs:
     needs: validate
     steps:
       - uses: actions/checkout@v4
+      - name: Install pinned cbindgen
+        shell: bash
+        run: cargo install cbindgen --version "${CBINDGEN_VERSION}" --locked --force
       - name: Generate C header
         shell: bash
         run: |

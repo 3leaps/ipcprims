@@ -7,6 +7,7 @@ permissions:
   actions: write
 env:
   CARGO_TERM_COLOR: always
+  CBINDGEN_VERSION: "0.29.2"
   MACOSX_DEPLOYMENT_TARGET: "11.0"
 jobs:
   validate-version:
@@ -472,6 +473,8 @@ jobs:
     needs: validate-version
     steps:
       - uses: actions/checkout@v4
+      - name: Install pinned cbindgen
+        run: cargo install cbindgen --version "${CBINDGEN_VERSION}" --locked --force
       - name: Generate C header
         run: cbindgen --config cbindgen.toml --crate ipcprims-ffi --output ipcprims.h
       - name: Upload header
