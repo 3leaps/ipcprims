@@ -3,17 +3,14 @@ use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "async")]
 use bytes::BytesMut;
-use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
+use ipcprims_frame::{encode_frame, FrameError, FrameReader, FrameWriter, CONTROL, HEADER_SIZE};
+use serde::de::DeserializeOwned;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::{PeerError, Result};
-
-#[cfg(feature = "async")]
-use ipcprims_frame::HEADER_SIZE;
 
 const MAX_HANDSHAKE_CHANNELS: usize = 256;
 const MAX_PROTOCOL_LEN: usize = 32;
@@ -369,13 +366,13 @@ pub fn handshake_client_with_config<R: Read, W: Write>(
     send_control_json(writer, &req)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload(
+    let mut payload = recv_control_payload(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )?;
-    let resp: HandshakeResponse = serde_json::from_slice(&payload)?;
+    let resp: HandshakeResponse = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&resp.protocol)?;
     validate_version(&resp.version)?;
@@ -451,13 +448,13 @@ pub fn handshake_server_with_config<R: Read, W: Write>(
     let supported = normalize_channels(supported_channels)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload(
+    let mut payload = recv_control_payload(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )?;
-    let req: HandshakeRequest = serde_json::from_slice(&payload)?;
+    let req: HandshakeRequest = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
@@ -503,9 +500,47 @@ pub fn handshake_server_with_config<R: Read, W: Write>(
 }
 
 fn send_control_json<T: Serialize, W: Write>(writer: &mut FrameWriter<W>, value: &T) -> Result<()> {
-    let payload = serde_json::to_vec(value)?;
-    writer.send(CONTROL, &payload)?;
+    let mut payload = serde_json::to_vec(value)?;
+    let mut buf = BytesMut::new();
+    let encode_result = encode_frame(CONTROL, &payload, &mut buf);
+    payload.zeroize();
+    encode_result.map_err(PeerError::Frame)?;
+
+    let write_result = write_all_handshake(writer.get_mut(), buf.as_ref());
+    buf.as_mut().zeroize();
+    write_result?;
+    flush_handshake(writer.get_mut())
+}
+
+fn parse_control_json<T: DeserializeOwned>(payload: &mut Vec<u8>) -> Result<T> {
+    let parsed = serde_json::from_slice(payload);
+    payload.zeroize();
+    Ok(parsed?)
+}
+
+fn write_all_handshake<W: Write>(writer: &mut W, buf: &[u8]) -> Result<()> {
+    let mut offset = 0usize;
+    while offset < buf.len() {
+        match writer.write(&buf[offset..]) {
+            Ok(0) => return Err(PeerError::Frame(FrameError::ConnectionClosed)),
+            Ok(n) => offset += n,
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
+        }
+    }
     Ok(())
+}
+
+fn flush_handshake<W: Write>(writer: &mut W) -> Result<()> {
+    loop {
+        match writer.flush() {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
+        }
+    }
 }
 
 #[cfg(feature = "async")]
@@ -520,13 +555,17 @@ async fn send_control_json_async<W: tokio::io::AsyncWrite + Unpin>(
         return Err(PeerError::Timeout(timeout));
     }
 
-    let payload = serde_json::to_vec(value)?;
+    let mut payload = serde_json::to_vec(value)?;
     let mut buf = BytesMut::new();
-    ipcprims_frame::encode_frame(CONTROL, &payload, &mut buf).map_err(PeerError::Frame)?;
+    let encode_result = encode_frame(CONTROL, &payload, &mut buf);
+    payload.zeroize();
+    encode_result.map_err(PeerError::Frame)?;
 
     let remaining = deadline.saturating_duration_since(now);
-    tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::write_all(writer, &buf))
-        .await
+    let write_result =
+        tokio::time::timeout(remaining, tokio::io::AsyncWriteExt::write_all(writer, &buf)).await;
+    buf.as_mut().zeroize();
+    write_result
         .map_err(|_| PeerError::Timeout(timeout))?
         .map_err(|e| PeerError::Frame(FrameError::Io(e)))?;
 
@@ -593,41 +632,67 @@ fn recv_control_payload<R: Read>(
     timeout: Duration,
     max_handshake_payload: usize,
 ) -> Result<Vec<u8>> {
-    loop {
+    let mut header = [0u8; HEADER_SIZE];
+    read_exact_handshake(reader.get_mut(), &mut header, deadline, timeout)?;
+
+    if header[0..2] != [0x49, 0x50] {
+        return Err(PeerError::Frame(FrameError::InvalidMagic));
+    }
+
+    let payload_len = u32::from_le_bytes(header[2..6].try_into().unwrap()) as usize;
+    let channel = u16::from_le_bytes(header[6..8].try_into().unwrap());
+
+    if channel != CONTROL {
+        return Err(PeerError::HandshakeFailed(format!(
+            "expected CONTROL channel {}, got {}",
+            CONTROL, channel
+        )));
+    }
+
+    if payload_len > max_handshake_payload {
+        return Err(PeerError::HandshakeFailed(format!(
+            "handshake payload too large: {} (max {})",
+            payload_len, max_handshake_payload
+        )));
+    }
+
+    let mut payload = vec![0u8; payload_len];
+    if let Err(err) = read_exact_handshake(reader.get_mut(), &mut payload, deadline, timeout) {
+        payload.zeroize();
+        return Err(err);
+    }
+    Ok(payload)
+}
+
+fn read_exact_handshake<R: Read>(
+    reader: &mut R,
+    buf: &mut [u8],
+    deadline: Instant,
+    timeout: Duration,
+) -> Result<()> {
+    let mut offset = 0usize;
+    while offset < buf.len() {
         if Instant::now() >= deadline {
             return Err(PeerError::Timeout(timeout));
         }
 
-        match reader.read_frame() {
-            Ok(frame) => {
-                if frame.channel != CONTROL {
-                    return Err(PeerError::HandshakeFailed(format!(
-                        "expected CONTROL channel {}, got {}",
-                        CONTROL, frame.channel
-                    )));
-                }
-                if frame.payload.len() > max_handshake_payload {
-                    return Err(PeerError::HandshakeFailed(format!(
-                        "handshake payload too large: {} (max {})",
-                        frame.payload.len(),
-                        max_handshake_payload
-                    )));
-                }
-                return Ok(frame.payload.to_vec());
-            }
-            Err(FrameError::Io(err))
-                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::TimedOut =>
-            {
-                continue;
-            }
-            Err(FrameError::ConnectionClosed) => {
+        match reader.read(&mut buf[offset..]) {
+            Ok(0) => {
                 return Err(PeerError::Disconnected(
                     "connection closed during handshake".to_string(),
                 ));
             }
-            Err(err) => return Err(PeerError::Frame(err)),
+            Ok(n) => offset += n,
+            Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+            Err(err)
+                if err.kind() == ErrorKind::WouldBlock || err.kind() == ErrorKind::TimedOut =>
+            {
+                continue;
+            }
+            Err(err) => return Err(PeerError::Frame(FrameError::Io(err))),
         }
     }
+    Ok(())
 }
 
 #[cfg(feature = "async")]
@@ -688,19 +753,26 @@ async fn recv_control_payload_async<R: tokio::io::AsyncRead + Unpin>(
     let remaining = deadline - now;
 
     let mut payload = vec![0u8; payload_len];
-    tokio::time::timeout(
+    let read_result = tokio::time::timeout(
         remaining,
         tokio::io::AsyncReadExt::read_exact(reader, &mut payload),
     )
-    .await
-    .map_err(|_| PeerError::Timeout(timeout))?
-    .map_err(|e| {
-        if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            PeerError::Disconnected("connection closed during handshake".to_string())
-        } else {
-            PeerError::Frame(FrameError::Io(e))
-        }
-    })?;
+    .await;
+    let read_result = read_result
+        .map_err(|_| PeerError::Timeout(timeout))
+        .and_then(|result| {
+            result.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                    PeerError::Disconnected("connection closed during handshake".to_string())
+                } else {
+                    PeerError::Frame(FrameError::Io(e))
+                }
+            })
+        });
+    if let Err(err) = read_result {
+        payload.zeroize();
+        return Err(err);
+    }
 
     Ok(payload)
 }
@@ -731,14 +803,14 @@ where
 
     let deadline = Instant::now() + config.timeout;
     send_control_json_async(writer, &req, deadline, config.timeout).await?;
-    let payload = recv_control_payload_async(
+    let mut payload = recv_control_payload_async(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )
     .await?;
-    let resp: HandshakeResponse = serde_json::from_slice(&payload)?;
+    let resp: HandshakeResponse = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&resp.protocol)?;
     validate_version(&resp.version)?;
@@ -803,14 +875,14 @@ where
     let supported = normalize_channels(supported_channels)?;
 
     let deadline = Instant::now() + config.timeout;
-    let payload = recv_control_payload_async(
+    let mut payload = recv_control_payload_async(
         reader,
         deadline,
         config.timeout,
         config.max_handshake_payload,
     )
     .await?;
-    let req: HandshakeRequest = serde_json::from_slice(&payload)?;
+    let req: HandshakeRequest = parse_control_json(&mut payload)?;
 
     validate_protocol_name(&req.protocol)?;
     validate_version(&req.version)?;
@@ -1131,6 +1203,38 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_slice(&payload).expect("request should be valid JSON");
         assert_eq!(value["auth_token"]["hex"].as_str().unwrap().len(), 8192);
+    }
+
+    #[test]
+    fn parse_control_json_zeroizes_payload_after_success() {
+        let request = HandshakeRequest {
+            protocol: "ipcprims".to_string(),
+            version: "1.0".to_string(),
+            channels: vec![1],
+            auth_token: Some(Zeroizing::new(b"token-123".to_vec())),
+        };
+        let mut payload = serde_json::to_vec(&request).expect("request should serialize");
+
+        let parsed: HandshakeRequest =
+            parse_control_json(&mut payload).expect("request should parse");
+
+        assert_eq!(
+            parsed.auth_token.as_ref().map(|token| token.as_slice()),
+            Some(b"token-123".as_slice())
+        );
+        assert!(payload.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn parse_control_json_zeroizes_payload_after_error() {
+        let mut payload =
+            br#"{"protocol":"ipcprims","version":"1.0","channels":[1],"auth_token":"legacy"}"#
+                .to_vec();
+
+        let result = parse_control_json::<HandshakeRequest>(&mut payload);
+
+        assert!(matches!(result, Err(PeerError::Json(_))));
+        assert!(payload.iter().all(|byte| *byte == 0));
     }
 
     #[test]
