@@ -126,7 +126,10 @@ fn write_auth_token_out(
         // SAFETY: Pointer validity is guaranteed by the caller.
         unsafe { &mut *out_token }
     };
-    zeroize_auth_token_data(token_ref);
+
+    token_ref.data = std::ptr::null_mut();
+    token_ref.len = 0;
+    token_ref.present = false;
 
     let Some(token) = token else {
         return IpcResult::Ok;
@@ -471,8 +474,10 @@ pub unsafe extern "C" fn ipc_peer_shutdown(peer: IpcPeerHandle) -> IpcResult {
 ///
 /// # Safety
 /// `peer` must be a valid peer handle and `out_token` must be a valid writable pointer.
-/// If `out_token->data` already contains a prior token from this library, it is zeroized and
-/// freed first. Returned token data must be released with `ipc_auth_token_free`.
+/// `out_token` is overwritten without reading its previous contents. If reusing an `IpcAuthToken`
+/// that already owns token data from this library, call `ipc_auth_token_free` before passing it
+/// here or that prior allocation will be leaked. Returned token data must be released with
+/// `ipc_auth_token_free`.
 #[no_mangle]
 pub unsafe extern "C" fn ipc_peer_take_client_auth_token(
     peer: IpcPeerHandle,
@@ -594,10 +599,10 @@ mod tests {
             let peer = unsafe { ipc_listener_accept(listener) };
             assert!(!peer.is_null());
 
-            let mut token = IpcAuthToken::default();
-            let result =
-                unsafe { ipc_peer_take_client_auth_token(peer, &mut token as *mut IpcAuthToken) };
+            let mut token = std::mem::MaybeUninit::<IpcAuthToken>::uninit();
+            let result = unsafe { ipc_peer_take_client_auth_token(peer, token.as_mut_ptr()) };
             assert_eq!(result, IpcResult::Ok);
+            let mut token = unsafe { token.assume_init() };
             assert!(token.present);
             assert_eq!(token.len, 7);
             let bytes = unsafe { std::slice::from_raw_parts(token.data, token.len) };
@@ -607,9 +612,10 @@ mod tests {
             assert!(token.data.is_null());
             assert_eq!(token.len, 0);
 
-            let result =
-                unsafe { ipc_peer_take_client_auth_token(peer, &mut token as *mut IpcAuthToken) };
+            let mut token = std::mem::MaybeUninit::<IpcAuthToken>::uninit();
+            let result = unsafe { ipc_peer_take_client_auth_token(peer, token.as_mut_ptr()) };
             assert_eq!(result, IpcResult::Ok);
+            let token = unsafe { token.assume_init() };
             assert!(!token.present);
             assert!(token.data.is_null());
             assert_eq!(token.len, 0);

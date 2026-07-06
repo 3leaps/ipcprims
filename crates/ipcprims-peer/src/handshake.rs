@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 #[cfg(feature = "async")]
 use bytes::BytesMut;
 use ipcprims_frame::{FrameError, FrameReader, FrameWriter, CONTROL};
+use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -19,6 +20,7 @@ const MAX_PROTOCOL_LEN: usize = 32;
 const MAX_VERSION_LEN: usize = 16;
 const MAX_PEER_ID_LEN: usize = 128;
 pub const MAX_AUTH_TOKEN_LEN: usize = 4096;
+const AUTH_TOKEN_HEX_FIELD: &str = "hex";
 
 /// Client handshake request sent on CONTROL channel.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -161,7 +163,12 @@ where
     S: serde::Serializer,
 {
     match token {
-        Some(token) => serializer.serialize_bytes(token.as_slice()),
+        Some(token) => {
+            let encoded = encode_auth_token_hex(token.as_slice());
+            let mut map = serializer.serialize_map(Some(1))?;
+            map.serialize_entry(AUTH_TOKEN_HEX_FIELD, encoded.as_str())?;
+            map.end()
+        }
         None => serializer.serialize_none(),
     }
 }
@@ -177,6 +184,57 @@ where
 
 struct SerdeAuthToken(Zeroizing<Vec<u8>>);
 
+fn encode_auth_token_hex(token: &[u8]) -> Zeroizing<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    let mut encoded = String::with_capacity(token.len() * 2);
+    for byte in token {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    Zeroizing::new(encoded)
+}
+
+fn decode_auth_token_hex<E>(
+    encoded: Zeroizing<String>,
+) -> std::result::Result<Zeroizing<Vec<u8>>, E>
+where
+    E: serde::de::Error,
+{
+    if encoded.len() % 2 != 0 {
+        return Err(E::custom("auth_token hex length must be even"));
+    }
+
+    let decoded_len = encoded.len() / 2;
+    if decoded_len > MAX_AUTH_TOKEN_LEN {
+        return Err(E::custom(format!(
+            "invalid auth_token length: greater than {MAX_AUTH_TOKEN_LEN}"
+        )));
+    }
+
+    let mut token = Zeroizing::new(Vec::with_capacity(decoded_len));
+    for chunk in encoded.as_bytes().chunks_exact(2) {
+        let high = decode_hex_digit::<E>(chunk[0])?;
+        let low = decode_hex_digit::<E>(chunk[1])?;
+        token.push((high << 4) | low);
+    }
+
+    validate_auth_token(Some(token.as_slice())).map_err(E::custom)?;
+    Ok(token)
+}
+
+fn decode_hex_digit<E>(digit: u8) -> std::result::Result<u8, E>
+where
+    E: serde::de::Error,
+{
+    match digit {
+        b'0'..=b'9' => Ok(digit - b'0'),
+        b'a'..=b'f' => Ok(digit - b'a' + 10),
+        b'A'..=b'F' => Ok(digit - b'A' + 10),
+        _ => Err(E::custom("auth_token hex contains a non-hex digit")),
+    }
+}
+
 impl<'de> Deserialize<'de> for SerdeAuthToken {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -188,7 +246,36 @@ impl<'de> Deserialize<'de> for SerdeAuthToken {
             type Value = SerdeAuthToken;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a non-empty byte array auth token")
+                formatter.write_str("a non-empty hex-encoded auth token object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut encoded = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        AUTH_TOKEN_HEX_FIELD => {
+                            if encoded.is_some() {
+                                return Err(serde::de::Error::duplicate_field(
+                                    AUTH_TOKEN_HEX_FIELD,
+                                ));
+                            }
+                            encoded = Some(Zeroizing::new(map.next_value::<String>()?));
+                        }
+                        _ => {
+                            return Err(serde::de::Error::unknown_field(
+                                &key,
+                                &[AUTH_TOKEN_HEX_FIELD],
+                            ));
+                        }
+                    }
+                }
+
+                let encoded =
+                    encoded.ok_or_else(|| serde::de::Error::missing_field(AUTH_TOKEN_HEX_FIELD))?;
+                decode_auth_token_hex(encoded).map(SerdeAuthToken)
             }
 
             fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
@@ -1026,6 +1113,27 @@ mod tests {
     }
 
     #[test]
+    fn auth_token_serializes_compactly_under_default_payload_cap() {
+        let request = HandshakeRequest {
+            protocol: "ipcprims".to_string(),
+            version: "1.0".to_string(),
+            channels: vec![1],
+            auth_token: Some(Zeroizing::new(vec![0xff; MAX_AUTH_TOKEN_LEN])),
+        };
+
+        let payload = serde_json::to_vec(&request).expect("request should serialize");
+        assert!(
+            payload.len() <= HandshakeConfig::default().max_handshake_payload,
+            "serialized payload length {} exceeded default cap",
+            payload.len()
+        );
+
+        let value: serde_json::Value =
+            serde_json::from_slice(&payload).expect("request should be valid JSON");
+        assert_eq!(value["auth_token"]["hex"].as_str().unwrap().len(), 8192);
+    }
+
+    #[test]
     fn handshake_timeout() {
         let mut reader = FrameReader::new(AlwaysTimedOutReader);
         let mut writer = FrameWriter::new(Cursor::new(Vec::<u8>::new()));
@@ -1164,6 +1272,38 @@ mod tests {
                 .as_ref()
                 .map(|token| token.as_slice()),
             Some(b"token\0with\0nul".as_slice())
+        );
+    }
+
+    #[test]
+    fn max_auth_token_passthrough() {
+        let (left, right) = UnixStream::pair().unwrap();
+        let expected = vec![0xff; MAX_AUTH_TOKEN_LEN];
+        let expected_server = expected.clone();
+
+        let server = thread::spawn(move || {
+            let mut reader = FrameReader::new(left.try_clone().unwrap());
+            let mut writer = FrameWriter::new(left);
+            handshake_server(&mut reader, &mut writer, &[1], "peer-auth-max").unwrap()
+        });
+
+        let mut reader = FrameReader::new(right.try_clone().unwrap());
+        let mut writer = FrameWriter::new(right);
+        let cfg = HandshakeConfig {
+            auth_token: Some(Zeroizing::new(expected)),
+            ..HandshakeConfig::default()
+        };
+        let client_result =
+            handshake_client_with_config(&mut reader, &mut writer, &[1], &cfg).unwrap();
+        let server_result = server.join().unwrap();
+
+        assert!(client_result.client_auth_token.is_none());
+        assert_eq!(
+            server_result
+                .client_auth_token
+                .as_ref()
+                .map(|token| token.as_slice()),
+            Some(expected_server.as_slice())
         );
     }
 

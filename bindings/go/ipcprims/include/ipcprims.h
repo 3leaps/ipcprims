@@ -189,8 +189,10 @@ IpcResult ipc_peer_shutdown(IpcPeerHandle peer);
  *
  * # Safety
  * `peer` must be a valid peer handle and `out_token` must be a valid writable pointer.
- * If `out_token->data` already contains a prior token from this library, it is zeroized and
- * freed first. Returned token data must be released with `ipc_auth_token_free`.
+ * `out_token` is overwritten without reading its previous contents. If reusing an `IpcAuthToken`
+ * that already owns token data from this library, call `ipc_auth_token_free` before passing it
+ * here or that prior allocation will be leaked. Returned token data must be released with
+ * `ipc_auth_token_free`.
  */
 IpcResult ipc_peer_take_client_auth_token(IpcPeerHandle peer, struct IpcAuthToken *out_token);
 
