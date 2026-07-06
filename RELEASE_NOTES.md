@@ -20,7 +20,7 @@ This release adds the async TypeScript peer surface and hardens auth-token handl
 - **Explicit server retrieval**: Server peers expose a distinct no-token state and clear stored token material after retrieval.
 - **Binding examples**: Go and TypeScript examples use constant-time comparison patterns with clean length-mismatch rejection before treating a peer as authenticated.
 
-### Known Issues
+### Compatibility
 
 - **Cross-version token-authenticated peers**: No known deployed cross-version token-authenticated peers exist for this release window; consumers using token auth should upgrade both sides together.
 
