@@ -9,7 +9,7 @@ env:
   RUSTFLAGS: "-Dwarnings"
 jobs:
   msrv:
-    name: MSRV (${{ matrix.os }}, rust 1.85.0)
+    name: MSRV (${{ matrix.os }}, rust 1.88.0)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -20,12 +20,12 @@ jobs:
           - os: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
       # Keep MSRV focused: exercise async+schema on core crates but do not enable `ipcprims`' `cli`
-      # feature (it pulls `comfy-table`, which currently requires a newer toolchain).
+      # feature. The CLI is covered by normal CI.
       - name: Build (MSRV, core crates)
         run: |
           cargo build -p ipcprims-transport --features async --all-targets

@@ -4,7 +4,7 @@ This guide covers getting ipcprims building and tested locally. Pick your platfo
 
 The core toolchain requirements are:
 
-- **Rust** stable (1.85+ for core crates; 1.88+ for `ipcprims-napi`)
+- **Rust** stable (1.88+)
 - **Go** 1.21+ (for Go bindings)
 - **Node.js** 18+ (for TypeScript bindings)
 - **goneat** (formatting and lint orchestration)

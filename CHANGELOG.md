@@ -13,6 +13,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **MSRV policy**: Rust MSRV moved to 1.88.0 across the workspace and CI MSRV gates, aligning core crates with the existing N-API toolchain floor.
+
 ## [0.2.2] — 2026-07-06
 
 ### Breaking Change
