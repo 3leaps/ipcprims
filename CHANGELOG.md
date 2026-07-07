@@ -119,7 +119,7 @@ Infrastructure release: cross-language binding scaffolds (FFI, Go, TypeScript) a
 - **Workflows**: `go-bindings.yml` — multi-platform FFI build pipeline with PR creation for prebuilt libs
 - **Workflows**: `typescript-bindings.yml` — cross-platform test matrix (4 OS + Alpine musl)
 - **Workflows**: `typescript-napi-prebuilds.yml` — build `.node` prebuilds for 5 platforms via zig cross-compilation
-- **Workflows**: `typescript-npm-publish.yml` — OIDC trusted publishing to npm
+- **Workflows**: `typescript-publish-npm.yml` — OIDC trusted publishing to npm
 - **Release scripts**: download, upload, checksum scripts now handle FFI bundles, C headers, and SBOM artifacts
 - **Go workspace**: root `go.mod` + `go.work` for repo-level Go tooling compatibility
 - **actionlint config**: `.github/actionlint.yaml` with self-hosted runner labels

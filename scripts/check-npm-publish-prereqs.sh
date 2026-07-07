@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-WORKFLOW="${PROJECT_ROOT}/.github/workflows/typescript-npm-publish.yml"
+WORKFLOW="${PROJECT_ROOT}/.github/workflows/typescript-publish-npm.yml"
 
 MIN_NODE="22.14.0"
 MIN_NPM="11.5.1"
@@ -89,4 +89,4 @@ if ! grep -q '\[ "${GITHUB_REF_NAME}" = "$DEFAULT_BRANCH" \]' "$WORKFLOW"; then
 	fail "publish workflow recovery path must require GITHUB_REF_NAME to equal DEFAULT_BRANCH"
 fi
 
-ok "npm publish workflow prerequisites: Node $node_version, npm $npm_version"
+ok "npm publish workflow prerequisites: $(basename "$WORKFLOW"), Node $node_version, npm $npm_version"

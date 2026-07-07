@@ -66,12 +66,14 @@ jobs:
             exit 0
           fi
 
-          if [ "${GITHUB_REF_TYPE:-}" = "branch" ] && [ "${GITHUB_REF_NAME}" = "$DEFAULT_BRANCH" ] && [ -n "$INPUT_TAG" ]; then
+          if [ "${GITHUB_REF_TYPE:-}" = "branch" ] &&
+            [ "${GITHUB_REF_NAME}" = "$DEFAULT_BRANCH" ] &&
+            [ -n "$INPUT_TAG" ]; then
             echo "Release recovery dispatch from ${DEFAULT_BRANCH} for ${INPUT_TAG}"
             exit 0
           fi
 
-          echo "::error::This workflow must run from a tag ref, or from the default branch with inputs.tag for recovery."
+          echo "::error::Run from a tag ref, or from the default branch with inputs.tag for recovery."
           echo "ref.type=${GITHUB_REF_TYPE:-<unset>}"
           echo "ref.name=${GITHUB_REF_NAME:-<unset>}"
           echo "default.branch=${DEFAULT_BRANCH}"
