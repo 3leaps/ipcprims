@@ -41,6 +41,9 @@ OIDC trusted publishing requires:
 
 - Workflow running from a `v*` tag ref
 - npm trusted publisher configured with workflow filename `typescript-publish-npm.yml`
+- npm trusted publisher configured with environment name `publish-npm`
+- `package.json` `repository.url` set to `git+https://github.com/3leaps/ipcprims.git`
+  on the root package and all platform packages
 - Node.js 22.14.0 or newer and npm 11.5.1 or newer in the publish job
 - `publish-npm` environment protection configured on the repo
 - All six packages already exist on npm (see First Publish below)

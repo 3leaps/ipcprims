@@ -171,8 +171,9 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 > publish first. See `docs/guides/npm-publishing.md` for the full guide.
 > The publish workflow must run with Node.js 22.14.0 or newer and npm 11.5.1 or newer;
 > `make prepush` validates the checked-in workflow prerequisites.
-> npm trusted publisher settings must name the exact workflow file:
-> `typescript-publish-npm.yml`.
+> npm trusted publisher settings on **all six packages** must match the repo
+> exactly: workflow file `typescript-publish-npm.yml`, environment `publish-npm`,
+> and package `repository.url` `git+https://github.com/3leaps/ipcprims.git`.
 >
 > ```bash
 > VERSION=$(cat VERSION)
@@ -183,6 +184,7 @@ Both tags must point to the **same commit** — the Go bindings PR merge commit.
 >     || echo "MISSING")
 >   echo "${pkg}: ${result}"
 > done
+> make npm-publish-prereqs-check
 > ```
 
 - [ ] **TypeScript N-API prebuilds** — run on the tag ref after upload:
