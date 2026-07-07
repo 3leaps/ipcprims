@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "rootDir": "__tests__",
     "outDir": ".tmp-test",
     "declaration": false,
     "sourceMap": false

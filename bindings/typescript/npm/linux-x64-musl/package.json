@@ -1,6 +1,6 @@
 {
   "name": "@3leaps/ipcprims-linux-x64-musl",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/3leaps/ipcprims.git",
