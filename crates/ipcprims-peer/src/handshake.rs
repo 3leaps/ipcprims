@@ -198,7 +198,7 @@ fn decode_auth_token_hex<E>(
 where
     E: serde::de::Error,
 {
-    if encoded.len() % 2 != 0 {
+    if !encoded.len().is_multiple_of(2) {
         return Err(E::custom("auth_token hex length must be even"));
     }
 

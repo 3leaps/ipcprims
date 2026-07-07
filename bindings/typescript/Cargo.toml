@@ -2,8 +2,7 @@
 name = "ipcprims-napi"
 version.workspace = true
 edition.workspace = true
-# NOTE: napi-build requires rustc >= 1.88.
-rust-version = "1.88.0"
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true

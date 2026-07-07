@@ -9,8 +9,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
 # NOTE: MSRV and (future) Miri checks are available locally via `make msrv` / `make miri`.
-# Core crate MSRV: 1.85.0 (workspace Cargo.toml)
-# ipcprims-napi MSRV: 1.88.0 (napi-build requirement; bindings/typescript/Cargo.toml)
+# Workspace MSRV: 1.88.0 (workspace Cargo.toml)
 jobs:
   format:
     name: Format Check
@@ -27,14 +26,14 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
   msrv:
-    name: MSRV (core crates, rust 1.85.0)
+    name: MSRV (core crates, rust 1.88.0)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
       - name: MSRV build + test
         run: make msrv
   windows-cross-check:

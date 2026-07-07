@@ -324,27 +324,27 @@ check-unix-clippy: ## Lint Unix cfg paths via x86_64-unknown-linux-gnu target
 	$(CARGO) clippy -p ipcprims-peer --tests --features async --target x86_64-unknown-linux-gnu -- -D warnings
 	@echo "[ok] Unix cfg clippy check passed"
 
-msrv: ## Verify build with Minimum Supported Rust Version (1.85, core crates)
-	@echo "Checking MSRV (core crates at 1.85, ipcprims-napi requires 1.88)..."
-	@if rustup run 1.85.0 cargo --version >/dev/null 2>&1; then \
-		rustup run 1.85.0 cargo build -p ipcprims-transport --features async --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims-transport --features async --all-targets && \
-		rustup run 1.85.0 cargo build -p ipcprims-frame --features async --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims-frame --features async --all-targets && \
-		rustup run 1.85.0 cargo build -p ipcprims-schema --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims-schema --all-targets && \
-		rustup run 1.85.0 cargo build -p ipcprims-peer --features async,schema --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims-peer --features async,schema --all-targets && \
-		rustup run 1.85.0 cargo build -p ipcprims-ffi --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims-ffi --all-targets && \
-		rustup run 1.85.0 cargo build -p ipcprims --no-default-features --features peer,schema,async --all-targets && \
-		rustup run 1.85.0 cargo test -p ipcprims --no-default-features --features peer,schema,async --all-targets; \
+msrv: ## Verify build with Minimum Supported Rust Version (1.88, core crates)
+	@echo "Checking MSRV (core crates at 1.88)..."
+	@if rustup run 1.88.0 cargo --version >/dev/null 2>&1; then \
+		rustup run 1.88.0 cargo build -p ipcprims-transport --features async --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims-transport --features async --all-targets && \
+		rustup run 1.88.0 cargo build -p ipcprims-frame --features async --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims-frame --features async --all-targets && \
+		rustup run 1.88.0 cargo build -p ipcprims-schema --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims-schema --all-targets && \
+		rustup run 1.88.0 cargo build -p ipcprims-peer --features async,schema --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims-peer --features async,schema --all-targets && \
+		rustup run 1.88.0 cargo build -p ipcprims-ffi --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims-ffi --all-targets && \
+		rustup run 1.88.0 cargo build -p ipcprims --no-default-features --features peer,schema,async --all-targets && \
+		rustup run 1.88.0 cargo test -p ipcprims --no-default-features --features peer,schema,async --all-targets; \
 	else \
-		echo "[!!] Rust 1.85.0 toolchain not installed. Install with:"; \
-		echo "  rustup toolchain install 1.85.0"; \
+		echo "[!!] Rust 1.88.0 toolchain not installed. Install with:"; \
+		echo "  rustup toolchain install 1.88.0"; \
 		exit 1; \
 	fi
-	@echo "[ok] MSRV check passed (core crates at 1.85, ipcprims-napi requires 1.88)"
+	@echo "[ok] MSRV check passed (core crates at 1.88)"
 
 deny: ## Run cargo-deny license and advisory checks
 	@echo "Running cargo-deny..."

@@ -28,7 +28,7 @@ struct EnvInfoOutput {
 pub fn run(_args: EnvinfoArgs, format: OutputFormat) -> CliResult<i32> {
     let mut deps = BTreeMap::new();
     deps.insert("clap".to_string(), "4.5".to_string());
-    deps.insert("jsonschema".to_string(), "0.41".to_string());
+    deps.insert("jsonschema".to_string(), "0.46".to_string());
     deps.insert("rsfulmen".to_string(), "not-linked".to_string());
 
     let mut env = BTreeMap::new();

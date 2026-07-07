@@ -48,10 +48,10 @@ Purpose:
 
 MSRV scope details:
 
-- Core crates target `rust-version = 1.85.0` (workspace `Cargo.toml`).
-- `ipcprims-napi` requires Rust 1.88.0 (napi-build requirement) and is excluded.
+- Core crates target `rust-version = 1.88.0` (workspace `Cargo.toml`).
+- `ipcprims-napi` uses the workspace MSRV and is excluded from MSRV checks.
 - The `ipcprims` crate is built/tested without the `cli` feature for MSRV checks.
-  Reason: the current CLI table dependency (`comfy-table`) requires a newer compiler than 1.85.0.
+  Reason: the CLI is covered by normal CI.
 
 ### `release.yml` (tag-triggered release pipeline)
 
@@ -80,7 +80,7 @@ Purpose:
 Primary local gates:
 
 - `make prepush`: format + clippy + tests + cargo-deny
-- `make msrv`: core crates build+test on Rust 1.85.0 (excludes NAPI)
+- `make msrv`: core crates build+test on Rust 1.88.0 (excludes NAPI)
 - `make check-windows`: compile-only Windows target checks (no linking)
 
 Host-target note:
