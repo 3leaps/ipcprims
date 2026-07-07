@@ -3,6 +3,11 @@
   "version": "0.2.2",
   "description": "TypeScript bindings for ipcprims via Node-API",
   "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3leaps/ipcprims.git",
+    "directory": "bindings/typescript"
+  },
   "main": "index.js",
   "types": "index.d.ts",
   "files": [

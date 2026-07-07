@@ -1,6 +1,11 @@
 {
   "name": "@3leaps/ipcprims-darwin-arm64",
   "version": "0.2.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3leaps/ipcprims.git",
+    "directory": "bindings/typescript/npm/darwin-arm64"
+  },
   "main": "ipcprims.darwin-arm64.node",
   "files": [
     "ipcprims.darwin-arm64.node"

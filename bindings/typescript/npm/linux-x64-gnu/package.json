@@ -1,6 +1,11 @@
 {
   "name": "@3leaps/ipcprims-linux-x64-gnu",
   "version": "0.2.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/3leaps/ipcprims.git",
+    "directory": "bindings/typescript/npm/linux-x64-gnu"
+  },
   "main": "ipcprims.linux-x64-gnu.node",
   "files": [
     "ipcprims.linux-x64-gnu.node"
