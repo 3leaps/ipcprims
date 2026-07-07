@@ -585,7 +585,7 @@ release-check: version-check ## Version consistency + package check
 #
 # TypeScript bindings:
 #   After tagging and signing, run typescript-napi-prebuilds.yml on the tag.
-#   Then run typescript-npm-publish.yml with OIDC trusted publishing.
+#   Then run typescript-publish-npm.yml with OIDC trusted publishing.
 
 DIST_RELEASE := dist/release
 IPCPRIMS_RELEASE_TAG ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo v$(VERSION))
