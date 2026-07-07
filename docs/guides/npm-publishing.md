@@ -40,6 +40,7 @@ gh workflow run "TypeScript npm Publish" --ref "v${VERSION}"
 OIDC trusted publishing requires:
 
 - Workflow running from a `v*` tag ref
+- Node.js 22.14.0 or newer and npm 11.5.1 or newer in the publish job
 - `publish-npm` environment protection configured on the repo
 - All six packages already exist on npm (see First Publish below)
 
@@ -110,7 +111,7 @@ If any are missing, do the manual first publish before running the OIDC workflow
    ```bash
    cd bindings/typescript
    npm install --omit=optional
-   npm run build
+   npm run build:native
    npm publish --access public
    cd -
    ```
