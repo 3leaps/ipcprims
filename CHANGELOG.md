@@ -13,9 +13,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-07-07
+
+Fast-follow release for dependency hygiene, MSRV alignment, and TypeScript runtime floor cleanup after v0.2.2.
+
 ### Changed
 
 - **MSRV policy**: Rust MSRV moved to 1.88.0 across the workspace and CI MSRV gates, aligning core crates with the existing N-API toolchain floor.
+- **Schema validation dependency**: `jsonschema` moved from 0.41 to 0.46.10 with explicit `resolve-http`, `resolve-file`, and `tls-ring` features. This keeps the ring-backed TLS posture while taking validation/reference correctness fixes.
+- **TypeScript runtime floor**: Published package engine floor moved from Node.js 18+ to Node.js 20+; TypeScript config updated for TypeScript 6.
+- **TypeScript dev dependencies**: `@types/node` aligned to the Node 20 supported runtime line; TypeScript moved to 6.0.3.
+
+### Fixed
+
+- **CLI envinfo**: Dependency report now identifies `jsonschema` as 0.46.
+
+### Known Issues
+
+- **NAPI-RS major update deferred**: `@napi-rs/cli` 3.x and Rust `napi`/`napi-derive` 3.x are not source/workflow-compatible with the current binding scripts. They remain on the 2.x line for v0.2.3.
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `hashbrown` (0.16 + 0.17) remain via the current `jsonschema`/HTTP/TLS graph. No functional impact.
 
 ## [0.2.2] — 2026-07-06
 
@@ -193,7 +209,8 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/3leaps/ipcprims/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/3leaps/ipcprims/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/3leaps/ipcprims/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/3leaps/ipcprims/compare/v0.1.2...v0.2.0

@@ -6,7 +6,7 @@ The core toolchain requirements are:
 
 - **Rust** stable (1.88+)
 - **Go** 1.21+ (for Go bindings)
-- **Node.js** 18+ (for TypeScript bindings)
+- **Node.js** 20+ (for TypeScript bindings)
 - **goneat** (formatting and lint orchestration)
 - **sfetch** (secure downloader, used by `make bootstrap`)
 
@@ -149,7 +149,7 @@ committing and `make prepush` before pushing.
 | Binding            | Target                 | Extra requirement         |
 | ------------------ | ---------------------- | ------------------------- |
 | Go                 | `bindings/go/ipcprims` | Go 1.21+                  |
-| TypeScript (N-API) | `bindings/typescript`  | Node 18+, `make ts-build` |
+| TypeScript (N-API) | `bindings/typescript`  | Node 20+, `make ts-build` |
 
 Sync the FFI artifacts before building bindings:
 

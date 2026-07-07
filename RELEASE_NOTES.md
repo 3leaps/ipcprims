@@ -6,6 +6,33 @@
 
 ---
 
+## v0.2.3 — 2026-07-07
+
+Fast-follow release for dependency hygiene, MSRV alignment, and TypeScript runtime floor cleanup after v0.2.2.
+
+### Highlights
+
+- **Rust MSRV 1.88.0**: Workspace metadata, CI MSRV gates, `make msrv`, and docs now use Rust 1.88.0 consistently.
+- **Schema validation refresh**: `jsonschema` moved to 0.46.10 with explicit `resolve-http`, `resolve-file`, and `tls-ring` features to retain the ring-backed TLS posture.
+- **Node runtime floor**: TypeScript bindings now declare Node.js `>=20`.
+- **TypeScript 6**: TypeScript dev tooling moved to 6.0.3 with TS 6-compatible module resolution/test emit config.
+- **Dependency hygiene**: Rust lockfile refreshed within compatible constraints; CLI `envinfo` now reports `jsonschema` 0.46.
+
+### Compatibility
+
+- **Rust**: MSRV is now 1.88.0.
+- **Node.js**: TypeScript package runtime floor is now Node.js 20+.
+- **Schema validation**: `jsonschema` 0.46 may tighten behavior for schemas or instances that older validation accepted.
+
+### Known Issues
+
+- **NAPI-RS major update deferred**: `@napi-rs/cli` 3.x and Rust `napi`/`napi-derive` 3.x need source/workflow migration and remain on 2.x for this release.
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `hashbrown` (0.16 + 0.17) remain via the current `jsonschema`/HTTP/TLS graph. No functional impact.
+
+Full release details: [docs/releases/v0.2.3.md](docs/releases/v0.2.3.md)
+
+---
+
 ## v0.2.2 — 2026-07-06
 
 **Breaking wire change for token-authenticated peers:** token-bearing handshakes now encode `auth_token` as bytes rather than a UTF-8 string. No-auth peers remain compatible because the field is omitted, but older token-authenticated peers that send string tokens fail closed. Upgrade both sides together when using token auth.
@@ -55,34 +82,5 @@ Windows named pipe transport (sync + async), full Windows CI/releng, and develop
 - **v0.3.0**: TCP transport (per DDR-0001), CLI P2 commands
 
 Full release details: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md)
-
----
-
-## v0.2.0 — 2026-02-26
-
-Tokio-native async API on Unix (UDS). First minor version bump adding new public API surface since v0.1.0.
-
-### Highlights
-
-- **Async (Tokio, Unix-only)**: Full async stack behind `async` feature flag — `AsyncUnixDomainSocket`/`AsyncIpcStream` transport, `IpcCodec` for `tokio_util::codec::Framed*`, `AsyncPeer` with split Tx/Rx handles, and `async_connect()` convenience function
-- **AsyncPeer design**: Background reader task with per-channel `mpsc` receivers, optional external `CancellationToken` for structured shutdown, and automatic reader task cancellation on drop
-- **MSRV consistency**: Core crates at 1.85.0; `ipcprims-napi` overrides to 1.88.0 (napi-build); `make msrv` target for local verification; tag-triggered CI MSRV matrix
-- **Dev tooling**: `make check-windows*` targets for local Windows cross-checks; AI-assisted commit template at `scripts/commit-template-ai.txt`
-
-### Platform Scope
-
-- **Async**: Unix-only in v0.2.0 (Linux x64/arm64, macOS arm64)
-- **Windows**: Named pipes deferred to v0.2.1
-
-### Known Issues
-
-- **Windows async**: Deferred to v0.2.1 (sync named pipes + async follow-on)
-- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema`. No functional impact.
-
-### What's Next
-
-- ~~**v0.2.1**: Windows named pipes~~ — Shipped
-
-Full release details: [docs/releases/v0.2.0.md](docs/releases/v0.2.0.md)
 
 ---
