@@ -6,6 +6,31 @@
 
 ---
 
+## v0.2.4 — 2026-08-21
+
+Patch release for a compatible Rust lockfile refresh, including `h2` 0.4.18 on the schema HTTP resolver path.
+
+### Highlights
+
+- **Compatible lockfile refresh**: workspace `Cargo.lock` updated within existing constraints, including `h2` 0.4.18.
+- **Schema HTTP path only**: `h2` is reached via `jsonschema` → `reqwest`. UDS and named-pipe peer transport are unchanged.
+- **Go Bindings Prep required**: rebuild Go prebuilts for this cut even if FFI source did not change; the workflow builds `--locked`.
+
+### Compatibility
+
+- **Rust / Node**: MSRV remains 1.88.0. TypeScript runtime floor remains Node.js 20+.
+- **Downstream lockfiles**: this does not force consumers with their own `Cargo.lock` to take the new `h2`. It fixes repo-built artifacts and CI.
+- **Held**: `jsonschema` 0.46.10, rustls 0.23.x, napi 2.16.x.
+
+### Known Issues
+
+- **NAPI-RS major update deferred**: `@napi-rs/cli` 3.x and Rust `napi`/`napi-derive` 3.x remain on 2.x.
+- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `hashbrown` (0.16 + 0.17) remain via the `jsonschema`/HTTP/TLS graph.
+
+Full release details: [docs/releases/v0.2.4.md](docs/releases/v0.2.4.md)
+
+---
+
 ## v0.2.3 — 2026-07-07
 
 Fast-follow release for dependency hygiene, MSRV alignment, and TypeScript runtime floor cleanup after v0.2.2.
@@ -52,35 +77,5 @@ This release adds the async TypeScript peer surface and hardens auth-token handl
 - **Cross-version token-authenticated peers**: No known deployed cross-version token-authenticated peers exist for this release window; consumers using token auth should upgrade both sides together.
 
 Full release details: [docs/releases/v0.2.2.md](docs/releases/v0.2.2.md)
-
----
-
-## v0.2.1 — 2026-04-04
-
-Windows named pipe transport (sync + async), full Windows CI/releng, and developer experience improvements.
-
-### Highlights
-
-- **Windows named pipes (sync + async)**: Complete named pipe transport in `ipcprims-transport` with overlapped I/O timeout enforcement, owner-only DACL for access control, and async transport wrapper — `AsyncPeer` and `AsyncPeerListener` now compile and work on Windows
-- **Windows CI expansion**: `windows-test`, `windows-test-async`, and `windows-dogfood` jobs; Windows CLI build jobs (x64 + arm64) in release workflow
-- **Peer disconnect handling**: `BrokenPipe`/`ConnectionReset` reclassified as `Disconnected` (not `Fatal`) — fixes Windows pipe closure behavior
-- **Dev tooling**: `make doctor-env` for environment diagnostics; `make check-unix-clippy` for cross-host lint coverage
-- **npm publish fixes**: Idempotent (skips already-published), OIDC npmrc fix, registry API verification
-
-### Platform Scope
-
-- **Windows x64 (sync + async)**: Supported via named pipes
-- **Windows ARM64 (sync + async)**: Supported via named pipes
-- **Developer guides**: `docs/guides/windows-dev-setup.md` and `docs/guides/windows-arm64-rough-edges.md`
-
-### Known Issues
-
-- **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema`. No functional impact.
-
-### What's Next
-
-- **v0.3.0**: TCP transport (per DDR-0001), CLI P2 commands
-
-Full release details: [docs/releases/v0.2.1.md](docs/releases/v0.2.1.md)
 
 ---
