@@ -65,12 +65,12 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] Note the annotation `Restore cache failed: go.sum not found` on Go darwin job is a known
       non-fatal warning (the Go bindings dir is a CGo module without a `go.sum` at root)
 
-### Bindings (Pre-Tag) — do NOT skip if FFI crate changed
+### Bindings (Pre-Tag) — required when FFI source or FFI-graph lock/deps change
 
-> **Note**: This section applies whenever `ipcprims-ffi` source has changed since the last
-> release. It is NOT optional for v0.1.2+. The workflow builds fresh prebuilt libs from the
-> current source — the libs committed to `bindings/go/ipcprims/lib/` in the previous release
-> are stale and must be rebuilt.
+> **Note**: Rebuild Go prebuilts when `ipcprims-ffi` source **or** any dependency/lockfile
+> change that affects the FFI graph has landed since the last committed Go prebuilts. The
+> workflow is `--locked` against the workspace root, so a `Cargo.lock` change can change
+> the prebuilt natives even when FFI source is unchanged. It is NOT optional for v0.1.2+.
 >
 > **Ordering guardrail**: merge the version/changelog/release-notes PR to `main` before
 > running the Go bindings workflow. The workflow builds from `main`; running it before the

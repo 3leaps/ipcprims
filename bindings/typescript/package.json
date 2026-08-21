@@ -1,6 +1,6 @@
 {
   "name": "@3leaps/ipcprims",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "TypeScript bindings for ipcprims via Node-API",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -41,11 +41,11 @@
     "typecheck": "tsc --noEmit"
   },
   "optionalDependencies": {
-    "@3leaps/ipcprims-linux-x64-gnu": "0.2.3",
-    "@3leaps/ipcprims-linux-x64-musl": "0.2.3",
-    "@3leaps/ipcprims-linux-arm64-gnu": "0.2.3",
-    "@3leaps/ipcprims-darwin-arm64": "0.2.3",
-    "@3leaps/ipcprims-win32-x64-msvc": "0.2.3"
+    "@3leaps/ipcprims-linux-x64-gnu": "0.2.4",
+    "@3leaps/ipcprims-linux-x64-musl": "0.2.4",
+    "@3leaps/ipcprims-linux-arm64-gnu": "0.2.4",
+    "@3leaps/ipcprims-darwin-arm64": "0.2.4",
+    "@3leaps/ipcprims-win32-x64-msvc": "0.2.4"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4",
