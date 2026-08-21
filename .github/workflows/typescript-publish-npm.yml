@@ -32,14 +32,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: publish-npm  # Required for npm OIDC trusted publishing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Normally this workflow runs from the release tag. For release
           # recovery, dispatch from main with inputs.tag to use the fixed
           # workflow while publishing the tagged source tree.
           ref: ${{ inputs.tag || github.ref }}
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
