@@ -43,3 +43,10 @@ if (format.error && format.error.code !== "ENOENT") {
 if (!format.error && format.status !== 0) {
 	process.exit(format.status ?? 1);
 }
+
+// Synchronize the loader-specific declaration variants (.cts for require, .mts
+// for import) from the finalized index.d.ts, so the three declaration files
+// never drift independently after a NAPI-RS regeneration + augmentation.
+const synced = readFileSync(dtsPath, "utf8");
+writeFileSync(path.join(dir, "..", "index.d.cts"), synced);
+writeFileSync(path.join(dir, "..", "index.d.mts"), synced);
