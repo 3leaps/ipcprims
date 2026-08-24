@@ -2,7 +2,7 @@
 
 ## Read First
 
-1. Check `AGENTS.local.md` if it exists (gitignored, tactical session guidance)
+1. **Check for local guidance** if present (e.g. `AGENTS.local.md`) — machine-specific instructions and tactical session overrides. Local context is kept out of the working tree on purpose; a `.gitignore` entry is a convenience filter, not a security boundary.
 2. Read `MAINTAINERS.md` for contacts and governance
 3. Review this document for operational protocols
 4. Understand: this is a **Rust library with cross-language bindings** — correctness is paramount
@@ -156,8 +156,8 @@ FFI boundary changes require extra scrutiny:
 - Change FFI contracts without review
 - Use `unsafe` without clear justification and review
 - Assume platform behavior without testing
-- **EVER commit anything from `.plans/`** - this directory is gitignored and MUST stay local
-- Commit `AGENTS.local.md` (gitignored - session-specific guidance)
+- **Add local planning paths, board names, or planning IDs to tracked content** — planning artifacts live in a private, maintainer-managed system kept outside the repository tree; a `.gitignore` entry is a convenience filter, not a security boundary
+- Commit `AGENTS.local.md` or other local guidance — it is kept out of the tree as defense-in-depth, not because a `.gitignore` entry makes it safe
 
 ## Critical Rules
 
@@ -280,6 +280,15 @@ FFI Architect — Bindings design and cross-language integration.
 - **Online**: https://crucible.3leaps.dev/
 - **FulmenHQ patterns**: https://github.com/fulmenhq/crucible
 - **Local decisions**: `docs/decisions/` (ADR, DDR, SDR)
+
+## Planning Artifacts
+
+- Feature briefs, task boards, and operational notes live in a private,
+  maintainer-managed planning system kept **outside** this repository tree —
+  not in-tree behind `.gitignore`, which is a convenience filter, not a security
+  boundary. This conforms to the [3 Leaps OSS Sensitive Local Data Policy](https://github.com/3leaps/oss-policies/blob/main/SENSITIVE-LOCAL-DATA.md).
+- Do not add local planning paths, board names, or planning IDs to tracked repo
+  content (code, docs, comments, commit messages, PR text).
 
 ## Contact
 

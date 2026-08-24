@@ -14,10 +14,11 @@ target/
 # Cargo.lock
 
 # -----------------------------------------------------------------------------
-# Planning and Local Configuration (NEVER COMMIT)
+# Planning and Local Configuration (kept out of the tree)
 # -----------------------------------------------------------------------------
-# Session planning documents - always local, never committed
-.plans/
+# Session planning documents are kept out of the working tree on purpose; this
+# entry is a convenience filter, not a security boundary.
+/.plans/
 
 # Local agent instructions - per-session tactical guidance
 AGENTS.local.md
