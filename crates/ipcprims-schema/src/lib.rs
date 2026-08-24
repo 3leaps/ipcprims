@@ -1,10 +1,4 @@
-//! Optional JSON Schema validation at the IPC transport boundary.
-//!
-//! Validate messages against JSON Schema 2020-12 at the frame level.
-//! Catch contract violations before they become bugs.
-//!
-//! This crate is optional — use it when you want schema-enforced
-//! message contracts between peers.
+#![doc = include_str!("../../../docs/guides/schema-registry.md")]
 
 pub mod config;
 pub mod error;

@@ -202,7 +202,13 @@ The core value-add. Length-prefixed message framing with channel multiplexing.
 
 ### ipcprims-schema
 
-Optional JSON Schema 2020-12 validation at the transport boundary. Behind the `schema` feature flag.
+Optional JSON Schema 2020-12 validation at the transport boundary. Attach a
+channel-keyed `SchemaRegistry` to validate registered payloads, or load
+schemas from a directory with explicit strictness and missing-schema policy.
+The default configuration remains permissive for unregistered channels; see the
+[Schema Registry Guide](docs/guides/schema-registry.md) for configuration,
+directory-loading rules, peer integration, and platform limitations. The peer
+integration is behind the `schema` feature flag.
 
 ### ipcprims-peer
 

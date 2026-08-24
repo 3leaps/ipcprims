@@ -83,3 +83,45 @@ if (!ok) {
 ```
 
 `crypto.timingSafeEqual()` throws on unequal lengths, so check the length first and reject cleanly. Do not use `==`, string comparison, or `Buffer.equals()` for token authorization.
+
+## Schema Registry
+
+Load a schema directory for standalone validation with `SchemaRegistry`. It
+uses the Rust registry's default configuration, so a channel without a schema
+passes without validation. TypeScript does not currently expose strict mode,
+missing-schema rejection, or programmatic schema registration.
+
+```ts
+import { COMMAND, SchemaRegistry } from "@3leaps/ipcprims";
+
+const registry = SchemaRegistry.fromDirectory("/opt/example/schemas");
+registry.validate(COMMAND, Buffer.from('{"id":7}'));
+registry.close();
+```
+
+`close()` is safe to call more than once. Calling `validate()` after closing the
+registry throws because the native registry is no longer available.
+
+Both `Listener.bind()` and `AsyncListener.bind()` accept `schemaDir` in their
+options. Each loads and attaches its own registry with the same default-only
+configuration:
+
+```ts
+import { AsyncListener, COMMAND, Listener } from "@3leaps/ipcprims";
+
+const listener = Listener.bind("/tmp/ipcprims.sock", {
+  channels: [COMMAND],
+  schemaDir: "/opt/example/schemas",
+});
+
+const asyncListener = AsyncListener.bind("/tmp/ipcprims-async.sock", {
+  channels: [COMMAND],
+  schemaDir: "/opt/example/schemas",
+});
+```
+
+The standalone `SchemaRegistry` cannot be attached to a TypeScript peer or
+listener. Use `schemaDir` when a TypeScript listener needs validation, and do
+not assume it rejects unregistered channels. See the repository's
+[Schema Registry Guide](https://github.com/3leaps/ipcprims/blob/main/docs/guides/schema-registry.md)
+for Rust configuration, directory rules, and platform-specific protections.
