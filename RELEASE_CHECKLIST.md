@@ -26,6 +26,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 - [ ] **Run preflight checks**: `make release-preflight`
 
   This is the single authoritative gate. It runs, in order:
+
   1. Working tree clean check
   2. `make prepush` — fmt, clippy, tests, cargo-deny, **version consistency**
   3. `make version-check` — full consistency: `VERSION`, `Cargo.toml`, all TypeScript packages
@@ -108,6 +109,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
   ```
 
   Confirm the PR actually updates libs across all platforms before merging:
+
   - `bindings/go/ipcprims/lib/<platform>/libipcprims_ffi.a` (all platforms)
   - `bindings/go/ipcprims/lib-shared/<platform>/` (shared libs)
   - `bindings/go/ipcprims/include/ipcprims.h` (regenerated header)
@@ -270,6 +272,7 @@ export IPCPRIMS_GPG_HOMEDIR=/path/to/gpg/homedir  # optional
    ```
 
    Validates:
+
    - Checksums match artifacts
    - Signatures verify correctly
    - Exported keys are public-only (no secret key material)

@@ -27,6 +27,7 @@ ipcprims is also a general-purpose library used outside Lanyte. The schema valid
 - Load, compile, and store JSON Schema 2020-12 validators keyed by channel ID
 - Validate frame payloads against registered schemas
 - Configurable strictness via `RegistryConfig`:
+
   - `strict_mode: bool` — when true, adds `deny_unknown_fields` semantics (additional properties rejected)
   - `fail_on_missing_schema: bool` — when true, frames on channels without a registered schema are rejected
   - `validate_on_send: bool` — validate outbound frames (default: true when registry attached)
