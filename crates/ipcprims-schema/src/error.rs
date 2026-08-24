@@ -1,23 +1,23 @@
-/// Errors that can occur during schema validation.
+/// Errors that can occur while loading, compiling, or validating schemas.
 #[derive(Debug, thiserror::Error)]
 pub enum SchemaError {
-    /// The schema file could not be loaded.
+    /// A schema directory or file violated loading policy or could not be read.
     #[error("failed to load schema: {0}")]
     LoadFailed(String),
 
-    /// The schema could not be compiled.
+    /// A parsed JSON schema could not be compiled.
     #[error("failed to compile schema: {0}")]
     CompileFailed(String),
 
-    /// The payload failed schema validation.
+    /// A payload parsed successfully but failed its channel schema.
     #[error("validation failed on channel {channel}: {message}")]
     ValidationFailed { channel: u16, message: String },
 
-    /// The payload is not valid JSON.
+    /// Schema or payload JSON could not be parsed.
     #[error("payload is not valid JSON: {0}")]
     InvalidJson(#[from] serde_json::Error),
 
-    /// No schema registered for the given channel.
+    /// No schema is registered for the given channel while missing schemas fail.
     #[error("no schema registered for channel {0}")]
     NoSchema(u16),
 }

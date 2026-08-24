@@ -11,18 +11,23 @@ use crate::error::{Result, SchemaError};
 use crate::validator::validate_payload;
 
 /// Channel-keyed registry of compiled JSON Schema validators.
+///
+/// Registrations replace an existing validator for the same channel. With the
+/// default configuration, validation for a channel without a registered schema
+/// succeeds without parsing the payload. See [`RegistryConfig`] for the strict
+/// and missing-schema controls.
 pub struct SchemaRegistry {
     validators: HashMap<u16, Validator>,
     config: RegistryConfig,
 }
 
 impl SchemaRegistry {
-    /// Create an empty registry with default config.
+    /// Create an empty registry with the permissive default configuration.
     pub fn new() -> Self {
         Self::with_config(RegistryConfig::default())
     }
 
-    /// Create an empty registry with explicit config.
+    /// Create an empty registry with explicit configuration.
     pub fn with_config(config: RegistryConfig) -> Self {
         Self {
             validators: HashMap::new(),
@@ -30,13 +35,19 @@ impl SchemaRegistry {
         }
     }
 
-    /// Register a schema for a channel from a JSON string.
+    /// Register a JSON schema for a channel.
+    ///
+    /// A successful registration replaces any existing schema for `channel`.
+    /// When strict mode is enabled, the strict transform is applied before the
+    /// schema is compiled.
     pub fn register(&mut self, channel: u16, schema_json: &str) -> Result<()> {
         let schema: Value = serde_json::from_str(schema_json)?;
         self.register_value(channel, &schema)
     }
 
-    /// Register a schema for a channel from JSON value.
+    /// Register a parsed JSON schema for a channel.
+    ///
+    /// A successful registration replaces any existing schema for `channel`.
     pub fn register_value(&mut self, channel: u16, schema: &Value) -> Result<()> {
         let mut schema_to_compile = schema.clone();
         if self.config.strict_mode {
@@ -50,12 +61,25 @@ impl SchemaRegistry {
         Ok(())
     }
 
-    /// Load schemas from a directory.
+    /// Load recognized schemas from a directory with the default configuration.
     pub fn from_directory(path: &Path) -> Result<Self> {
         Self::from_directory_with_config(path, RegistryConfig::default())
     }
 
-    /// Load schemas from a directory with explicit config.
+    /// Load recognized schemas from a directory with explicit configuration.
+    ///
+    /// Canonical filenames are `channel_<N>.schema.json` and the built-in
+    /// `control`, `command`, `data`, `telemetry`, and `error` names. Non-schema
+    /// files are ignored; an unrecognized `*.schema.json` file is an error.
+    /// Canonical lowercase schema symlinks are rejected. The current symlink
+    /// check is literal-case-sensitive, so non-canonical schema symlinks are
+    /// skipped rather than rejected. Recognized files are count- and
+    /// size-bounded. On Unix the loader also compares `(dev, ino)` from path
+    /// metadata with the opened file; Windows does not yet have that
+    /// opened-file identity check.
+    ///
+    /// Do not provide more than one recognized filename for a channel. Later
+    /// registrations replace earlier ones in unspecified directory order.
     pub fn from_directory_with_config(path: &Path, config: RegistryConfig) -> Result<Self> {
         let mut registry = Self::with_config(config);
         let mut loaded_schema_count = 0usize;
@@ -154,7 +178,7 @@ impl SchemaRegistry {
         Ok(registry)
     }
 
-    /// Load from embedded schema strings.
+    /// Load from embedded schema strings with the default configuration.
     pub fn from_embedded(schemas: &[(u16, &str)]) -> Result<Self> {
         let mut registry = Self::new();
         for (channel, schema) in schemas {
@@ -163,7 +187,11 @@ impl SchemaRegistry {
         Ok(registry)
     }
 
-    /// Validate channel payload against its schema.
+    /// Validate a channel payload against its registered schema.
+    ///
+    /// With the default configuration, an unregistered channel succeeds
+    /// without parsing `payload`. When `fail_on_missing_schema` is enabled,
+    /// the same channel returns [`SchemaError::NoSchema`] before parsing.
     pub fn validate(&self, channel: u16, payload: &[u8]) -> Result<()> {
         match self.validators.get(&channel) {
             Some(validator) => validate_payload(channel, payload, validator),
@@ -177,19 +205,19 @@ impl SchemaRegistry {
         self.validate(frame.channel, frame.payload.as_ref())
     }
 
-    /// Check if a channel has a registered schema.
+    /// Return whether a channel has a registered schema.
     pub fn has_schema(&self, channel: u16) -> bool {
         self.validators.contains_key(&channel)
     }
 
-    /// Get channels that have registered schemas.
+    /// Return registered channels in ascending order.
     pub fn channels(&self) -> Vec<u16> {
         let mut channels: Vec<u16> = self.validators.keys().copied().collect();
         channels.sort_unstable();
         channels
     }
 
-    /// Get registry configuration.
+    /// Return the configuration used by this registry.
     pub fn config(&self) -> &RegistryConfig {
         &self.config
     }
