@@ -178,6 +178,26 @@ if [[ -f "$TS_ROOT/package.json" ]]; then
 			fi
 		fi
 	done
+
+	# Keep the committed npm lockfile aligned with the published package version.
+	if [[ -f "$TS_ROOT/package-lock.json" ]]; then
+		LOCK_VERSION=$(grep '"version"' "$TS_ROOT/package-lock.json" | head -1 | sed 's/.*"\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/')
+		if [[ "$LOCK_VERSION" == "$VERSION_FROM_FILE" ]]; then
+			ok "  typescript/package-lock.json: $LOCK_VERSION"
+		else
+			error "  typescript/package-lock.json: $LOCK_VERSION (expected $VERSION_FROM_FILE)"
+			TS_FAILED+=("bindings/typescript/package-lock.json")
+		fi
+
+		while IFS= read -r line; do
+			dep_ver=$(echo "$line" | sed 's/.*": "\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/')
+			dep_name=$(echo "$line" | sed 's/.*"\(@3leaps\/[^" ]*\)".*/\1/')
+			if [[ "$dep_ver" != "$VERSION_FROM_FILE" ]]; then
+				error "  lockfile optionalDependency $dep_name: $dep_ver (expected $VERSION_FROM_FILE)"
+				TS_FAILED+=("package-lock/$dep_name")
+			fi
+		done < <(grep '@3leaps/ipcprims-' "$TS_ROOT/package-lock.json")
+	fi
 fi
 
 if [[ ${#TS_FAILED[@]} -gt 0 ]]; then

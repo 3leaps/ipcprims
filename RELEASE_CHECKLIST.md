@@ -15,7 +15,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 
 - [ ] Update `VERSION` file with new semver (e.g., `0.2.0`)
 - [ ] Sync version to all manifests: `make version-sync`
-  - Syncs `Cargo.toml` workspace, `Cargo.lock`, and all `bindings/typescript` `package.json` files
+  - Syncs the `Cargo.toml` workspace, `Cargo.lock`, TypeScript package manifests, and `bindings/typescript/package-lock.json`
   - **Do not skip**: version drift between `VERSION` and `Cargo.toml` is a hard failure in `make prepush`
 - [ ] Update `CHANGELOG.md` (move Unreleased section to new version heading)
   - **Do not skip footer links**: add `[X.Y.Z]` compare link and re-anchor `[Unreleased]` to compare from the new tag to `HEAD`
@@ -29,7 +29,7 @@ This document walks maintainers through the build/sign/upload flow for each ipcp
 
   1. Working tree clean check
   2. `make prepush` — fmt, clippy, tests, cargo-deny, **version consistency**
-  3. `make version-check` — full consistency: `VERSION`, `Cargo.toml`, all TypeScript packages
+  3. `make version-check` — full consistency: `VERSION`, `Cargo.toml`, TypeScript package manifests, and the TypeScript package lockfile
   4. Release notes exist at `docs/releases/vX.Y.Z.md`
   5. Local/remote sync (no unpushed or unpulled commits)
 

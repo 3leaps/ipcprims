@@ -6,6 +6,28 @@
 
 ---
 
+## v0.2.5 — 2026-08-25
+
+Patch release for TypeScript package interoperability and SchemaRegistry guidance.
+
+### Highlights
+
+- **CommonJS and ESM entrypoints**: `@3leaps/ipcprims` now exposes explicit conditional exports with matching declaration files. ESM consumers can use named imports while CommonJS `require()` remains supported.
+- **SchemaRegistry guide**: new documentation covers configuration defaults, strict-mode behavior, safe directory loading, Rust peer integration, CLI validation, and standalone TypeScript validation.
+
+### Compatibility
+
+- **Node.js**: the TypeScript package continues to require Node.js 20+.
+- **Runtime behavior**: no wire format, peer transport, or SchemaRegistry runtime behavior changed.
+
+### Known Issues
+
+- **NAPI-RS major update deferred**: `@napi-rs/cli` 3.x and Rust `napi`/`napi-derive` 3.x remain on 2.x.
+
+Full release details: [docs/releases/v0.2.5.md](docs/releases/v0.2.5.md)
+
+---
+
 ## v0.2.4 — 2026-08-21
 
 Patch release for a compatible Rust lockfile refresh, including `h2` 0.4.18 on the schema HTTP resolver path.
@@ -55,27 +77,3 @@ Fast-follow release for dependency hygiene, MSRV alignment, and TypeScript runti
 - **Transitive dep duplication**: `getrandom` (0.2 + 0.3) and `hashbrown` (0.16 + 0.17) remain via the current `jsonschema`/HTTP/TLS graph. No functional impact.
 
 Full release details: [docs/releases/v0.2.3.md](docs/releases/v0.2.3.md)
-
----
-
-## v0.2.2 — 2026-07-06
-
-**Breaking wire change for token-authenticated peers:** token-bearing handshakes now encode `auth_token` as bytes rather than a UTF-8 string. No-auth peers remain compatible because the field is omitted, but older token-authenticated peers that send string tokens fail closed. Upgrade both sides together when using token auth.
-
-This release adds the async TypeScript peer surface and hardens auth-token handling across Rust, C FFI, Go, and TypeScript bindings.
-
-### Highlights
-
-- **TypeScript async peer API**: `AsyncPeer`, `AsyncListener`, async receives, async channel receivers, and promise-based send/ping/shutdown are now backed by the Rust async peer implementation.
-- **Opaque token bytes**: Auth tokens now cross the Rust handshake, C ABI, Go bindings, and TypeScript bindings as byte buffers instead of strings.
-- **Zeroizing ownership**: ipcprims-owned token buffers use zeroizing storage; FFI token retrieval returns caller-owned bytes that must be released with the dedicated zeroizing token free function.
-- **Explicit server retrieval**: Server peers expose a distinct no-token state and clear stored token material after retrieval.
-- **Binding examples**: Go and TypeScript examples use constant-time comparison patterns with clean length-mismatch rejection before treating a peer as authenticated.
-
-### Compatibility
-
-- **Cross-version token-authenticated peers**: No known deployed cross-version token-authenticated peers exist for this release window; consumers using token auth should upgrade both sides together.
-
-Full release details: [docs/releases/v0.2.2.md](docs/releases/v0.2.2.md)
-
----

@@ -89,7 +89,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Root-level npm lockfile (repo tooling only)
-package-lock.json
+/package-lock.json
 
 # NAPI-RS build artifacts
 bindings/typescript/target/
