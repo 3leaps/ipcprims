@@ -27,7 +27,7 @@ Add the schema crate directly when validation is needed:
 
 ```toml
 [dependencies]
-ipcprims-schema = "0.2.4"
+ipcprims-schema = "0.2.5"
 ```
 
 Create a registry, then register JSON Schema text or a parsed
@@ -157,15 +157,15 @@ configuration functions.
 
 ```toml
 [dependencies]
-ipcprims-peer = { version = "0.2.4", features = ["schema"] }
-ipcprims-schema = "0.2.4"
+ipcprims-peer = { version = "0.2.5", features = ["schema"] }
+ipcprims-schema = "0.2.5"
 ```
 
 Add the `async` feature when using `AsyncPeerListener` or
 `async_connect_with_config`:
 
 ```toml
-ipcprims-peer = { version = "0.2.4", features = ["schema", "async"] }
+ipcprims-peer = { version = "0.2.5", features = ["schema", "async"] }
 ```
 
 Create the registry with `Arc::new`, then pass a clone to

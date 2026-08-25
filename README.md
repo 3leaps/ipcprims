@@ -28,6 +28,7 @@ You're building software where multiple processes need to communicate locally â€
 - **Cross-platform**: Unix domain sockets on Linux/macOS and Windows named pipes.
 - **Sync + Async (Tokio)**: Blocking sync API plus Tokio-native async API behind `async` feature flag. Windows sync named pipes use overlapped I/O for timeout enforcement; Windows async named pipes are also supported.
 - **Library-first**: Embed directly in Rust, Go, Python, or TypeScript. CLI is a diagnostic/demo tool.
+- **TypeScript module flexibility**: ESM named imports and CommonJS `require()` from a single Node-API package (Node.js 20+).
 
 ### Framed-by-Default: The Core Difference
 
@@ -132,6 +133,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### As a TypeScript Library (ESM)
+
+The package supports ESM named imports and CommonJS `require()` from the same
+install. Node.js 20+ required.
+
+```ts
+import { AsyncListener, AsyncPeer, COMMAND } from "@3leaps/ipcprims";
+
+const listener = AsyncListener.bind("/tmp/ipcprims.sock", {
+  channels: [COMMAND],
+});
+
+const accepted = listener.accept();
+const client = await AsyncPeer.connect("/tmp/ipcprims.sock", [COMMAND]);
+const server = await accepted;
+
+await server.send(COMMAND, Buffer.from("hello"));
+const frame = await client.recvAsync();
+
+client.close();
+server.close();
+await listener.close();
+```
+
+CommonJS consumers keep working unchanged:
+
+```js
+const { Peer, COMMAND } = require("@3leaps/ipcprims");
+```
+
+See the [TypeScript binding guide](bindings/typescript/README.md) for async
+receivers, auth-token handling, and SchemaRegistry usage.
+
 ### As a CLI
 
 ```bash
@@ -227,7 +261,7 @@ The module follows sibling-repo layout conventions with `include/` (generated he
 
 ### TypeScript bindings
 
-TypeScript bindings scaffold is provided at `bindings/typescript` using Node-API (`ipcprims-napi`).
+The `@3leaps/ipcprims` package (Node-API) ships an explicit dual CommonJS/ESM surface with matching declaration files. ESM consumers can use named imports (`import { AsyncPeer, COMMAND } from "@3leaps/ipcprims"`) while CommonJS `require()` remains fully supported from the same package â€” no separate package or build step. Requires Node.js 20+. See the [TypeScript binding guide](bindings/typescript/README.md) for async peer, auth-token, and SchemaRegistry usage.
 
 ## Platform Support
 

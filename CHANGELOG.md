@@ -13,6 +13,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-08-25
+
+Patch release for TypeScript package interoperability and SchemaRegistry guidance.
+
+### Changed
+
+- **TypeScript package exports**: the package now provides explicit CommonJS and ESM entrypoints with matching declarations, including ESM named imports.
+- **SchemaRegistry documentation**: added configuration, strict-mode, directory-loading, peer-integration, and TypeScript usage guidance.
+
+### Compatibility
+
+- CommonJS `require()` support remains available. The TypeScript package continues to require Node.js 20+.
+- No wire format, peer transport, or SchemaRegistry runtime behavior changed in this release.
+
 ## [0.2.4] — 2026-08-21
 
 Patch release for a compatible Rust lockfile refresh, including `h2` 0.4.18 on the schema HTTP resolver path.
@@ -228,7 +242,8 @@ First functional release. Transport, framing, schema validation, peer management
 - Transitive dependency duplication: `getrandom` (0.2 + 0.3) and `windows-sys` (0.60 + 0.61) via `jsonschema` dependency tree. No functional impact; tracked for supply chain awareness.
 - `cbindgen.toml` is present as a placeholder; the `ffi/` crate does not exist yet. Shipped in v0.1.1.
 
-[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/3leaps/ipcprims/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/3leaps/ipcprims/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/3leaps/ipcprims/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/3leaps/ipcprims/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/3leaps/ipcprims/compare/v0.2.1...v0.2.2

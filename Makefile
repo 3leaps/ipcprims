@@ -507,7 +507,7 @@ version-set: ## Set explicit version (V=X.Y.Z)
 	@echo "$(V)" > $(VERSION_FILE)
 	@echo "Version set to $(V)"
 
-version-sync: ## Sync VERSION file to Cargo.toml and package.json
+version-sync: ## Sync VERSION file to Cargo.toml and TypeScript package manifests
 	@ver=$$(cat $(VERSION_FILE)); \
 	if command -v cargo-set-version >/dev/null 2>&1; then \
 		cargo set-version --workspace "$$ver"; \
@@ -530,6 +530,10 @@ version-sync: ## Sync VERSION file to Cargo.toml and package.json
 			fi; \
 		done; \
 		echo "[ok] Synced $$ts_root/npm/*/package.json to $$ver"; \
+		if [ -f "$$ts_root/package-lock.json" ]; then \
+			(cd "$$ts_root" && npm install --package-lock-only --ignore-scripts); \
+			echo "[ok] Synced $$ts_root/package-lock.json to $$ver"; \
+		fi; \
 	fi
 
 version-check: ## Validate version consistency across files
