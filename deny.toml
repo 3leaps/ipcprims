@@ -61,7 +61,11 @@ ignore = true
 multiple-versions = "warn"
 wildcards = "allow"
 highlight = "all"
-deny = []
+deny = [
+    { name = "openssl" },
+    { name = "openssl-sys" },
+    { name = "native-tls" },
+]
 skip = []
 skip-tree = []
 
