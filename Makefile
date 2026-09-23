@@ -13,7 +13,7 @@
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
-.PHONY: precommit prepush ci-clippy npm-publish-prereqs-check deny audit
+.PHONY: precommit prepush ci-clippy check-targets npm-publish-prereqs-check deny audit
 .PHONY: msrv
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -86,6 +86,7 @@ help: ## Show available targets
 	@echo "  precommit       Pre-commit checks (fast: fmt, clippy)"
 	@echo "  prepush         Pre-push checks (including current CI stable Clippy)"
 	@echo "  ci-clippy       Update stable Rust and run the CI Clippy command"
+	@echo "  check-targets   Check async Rust peer code for Linux x64/arm64 and Windows x64"
 	@echo "  msrv            Verify build+test on MSRV toolchain (core crates)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
@@ -462,7 +463,13 @@ ci-clippy: ## Match the floating stable Rust toolchain used by CI
 	rustup update stable --no-self-update
 	RUSTFLAGS="-Dwarnings" cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
 
-prepush: check ci-clippy version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
+check-targets: ## Check async peer transport on cross-platform CI targets
+	@for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc; do \
+		rustup target add "$$target" || exit $$?; \
+		cargo check --locked -p ipcprims-peer --features async --target "$$target" || exit $$?; \
+	done
+
+prepush: check ci-clippy check-targets version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
 
 npm-publish-prereqs-check: ## Validate TypeScript npm trusted-publishing workflow prerequisites
