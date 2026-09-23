@@ -3,6 +3,9 @@ use std::io::{Read, Write};
 use crate::error::Result;
 #[cfg(windows)]
 use crate::npipes::NamedPipeStream;
+use crate::peer_evidence::PeerEvidence;
+#[cfg(not(target_os = "macos"))]
+use crate::peer_evidence::PeerEvidenceUnavailableReason;
 
 /// A connected IPC stream — implements Read + Write.
 ///
@@ -108,9 +111,11 @@ impl IpcStream {
         }
     }
 
-    /// Get the credentials of the connected peer (Linux only).
+    /// Get the credentials of the connected peer (Linux or macOS).
     ///
     /// Returns `(uid, gid, pid)` via `SO_PEERCRED`, or `None` if unavailable.
+    /// Linux's historical tuple retains pid 0 across pid namespaces; use
+    /// [`Self::peer_evidence`] for an optional pid.
     #[cfg(target_os = "linux")]
     pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
         use std::os::fd::AsRawFd;
@@ -145,12 +150,46 @@ impl IpcStream {
         }
     }
 
+    /// Get the credentials of the connected peer (macOS).
+    ///
+    /// Returns `None` unless `getpeereid` and `LOCAL_PEERPID` both succeed
+    /// and report a usable pid. Peer credentials are not authentication.
+    #[cfg(target_os = "macos")]
+    pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
+        crate::peer_evidence::legacy_macos_credentials(self.peer_evidence())
+    }
+
     /// Get the credentials of the connected peer.
     ///
     /// Returns `None` on platforms that do not expose peer credentials.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
         None
+    }
+
+    /// Observe platform peer evidence without treating it as authentication.
+    pub fn peer_evidence(&self) -> PeerEvidence {
+        #[cfg(target_os = "linux")]
+        {
+            return match self.peer_credentials() {
+                Some(credentials) => crate::peer_evidence::linux_peer_evidence(credentials),
+                None => PeerEvidence::Unavailable {
+                    reason: PeerEvidenceUnavailableReason::QueryFailed,
+                },
+            };
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::fd::AsRawFd;
+            let IpcStreamInner::Unix(stream) = &self.inner;
+            crate::peer_evidence::macos_peer_evidence(stream.as_raw_fd())
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            PeerEvidence::Unavailable {
+                reason: PeerEvidenceUnavailableReason::UnsupportedPlatform,
+            }
+        }
     }
 }
 

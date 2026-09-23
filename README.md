@@ -210,6 +210,8 @@ This exercises `echo`, `send`, `listen`, `info`, `doctor`, and `envinfo` with sc
 
 Cross-platform transport abstraction. Unix domain sockets on Linux/macOS and named pipes on Windows. On Windows sync transport, read/write timeouts are enforced with overlapped I/O and cancellation.
 
+Connected Unix streams expose `peer_credentials()` as `(uid, gid, pid)` on Linux and macOS. On macOS it returns `None` unless both `getpeereid` and `LOCAL_PEERPID` provide all three values. The additive `peer_evidence()` accessor reports uid/gid provenance separately from optional pid provenance, including a reason when pid is unavailable; macOS retains uid/gid if only the pid lookup fails. A Linux pid of 0 is absent in the typed result while the legacy tuple is unchanged. Windows and unimplemented Unix targets report unsupported. Peer evidence is an observation, not authentication; callers decide whether it suffices for their policy.
+
 ### ipcprims-frame
 
 The core value-add. Length-prefixed message framing with channel multiplexing.

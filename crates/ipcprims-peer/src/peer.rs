@@ -269,6 +269,11 @@ impl Peer {
         self.reader.get_ref().peer_credentials()
     }
 
+    /// Platform peer evidence, which is not an authentication decision.
+    pub fn peer_evidence(&self) -> ipcprims_transport::PeerEvidence {
+        self.reader.get_ref().peer_evidence()
+    }
+
     fn send_control(&mut self, message: ControlMessage) -> Result<()> {
         let payload = serde_json::to_vec(&message)?;
         self.writer.send(CONTROL, &payload)?;
@@ -847,15 +852,61 @@ mod tests {
         let (peer, _other) = peer_pair(config);
         let creds = peer.reader.get_ref().peer_credentials();
         assert!(creds.is_some());
+        let (uid, gid, pid) = creds.unwrap();
+        let ipcprims_transport::PeerEvidence::Unix(evidence) = peer.peer_evidence() else {
+            panic!("expected Unix evidence");
+        };
+        assert_eq!(
+            (evidence.uid, evidence.gid, evidence.pid),
+            (uid, gid, (pid != 0).then_some(pid))
+        );
+        assert_eq!(
+            evidence.uid_gid_source,
+            ipcprims_transport::PeerEvidenceSource::SoPeercred
+        );
+        assert_eq!(
+            evidence.pid_source,
+            (pid != 0).then_some(ipcprims_transport::PeerEvidenceSource::SoPeercred)
+        );
     }
 
     #[test]
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    fn peer_credentials_macos() {
+        let config = PeerConfig::default();
+        let (peer, _other) = peer_pair(config);
+        let credentials = peer.peer_credentials().expect("macOS peer credentials");
+        assert_eq!(credentials.2, std::process::id());
+        let ipcprims_transport::PeerEvidence::Unix(evidence) = peer.peer_evidence() else {
+            panic!("expected Unix evidence");
+        };
+        assert_eq!(
+            (evidence.uid, evidence.gid, evidence.pid),
+            (credentials.0, credentials.1, Some(credentials.2))
+        );
+        assert_eq!(
+            evidence.uid_gid_source,
+            ipcprims_transport::PeerEvidenceSource::Getpeereid
+        );
+        assert_eq!(
+            evidence.pid_source,
+            Some(ipcprims_transport::PeerEvidenceSource::LocalPeerpid)
+        );
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     fn peer_credentials_non_linux() {
         let config = PeerConfig::default();
         let (peer, _other) = peer_pair(config);
         let creds = peer.reader.get_ref().peer_credentials();
         assert!(creds.is_none());
+        assert_eq!(
+            peer.peer_evidence(),
+            ipcprims_transport::PeerEvidence::Unavailable {
+                reason: ipcprims_transport::PeerEvidenceUnavailableReason::UnsupportedPlatform,
+            }
+        );
     }
 
     #[test]
