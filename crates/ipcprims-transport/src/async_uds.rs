@@ -111,12 +111,12 @@ impl AsyncIpcStream {
     pub fn peer_evidence(&self) -> PeerEvidence {
         #[cfg(target_os = "linux")]
         {
-            return match self.peer_credentials() {
+            match self.peer_credentials() {
                 Some(credentials) => crate::peer_evidence::linux_peer_evidence(credentials),
                 None => PeerEvidence::Unavailable {
                     reason: PeerEvidenceUnavailableReason::QueryFailed,
                 },
-            };
+            }
         }
         #[cfg(target_os = "macos")]
         {
