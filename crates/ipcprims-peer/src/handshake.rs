@@ -210,7 +210,7 @@ where
     }
 
     let mut token = Zeroizing::new(Vec::with_capacity(decoded_len));
-    for chunk in encoded.as_bytes().chunks_exact(2) {
+    for chunk in encoded.as_bytes().as_chunks::<2>().0 {
         let high = decode_hex_digit::<E>(chunk[0])?;
         let low = decode_hex_digit::<E>(chunk[1])?;
         token.push((high << 4) | low);

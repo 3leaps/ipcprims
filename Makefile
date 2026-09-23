@@ -13,7 +13,7 @@
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
 .PHONY: check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
-.PHONY: precommit prepush npm-publish-prereqs-check deny audit
+.PHONY: precommit prepush ci-clippy npm-publish-prereqs-check deny audit
 .PHONY: msrv
 .PHONY: build-release
 .PHONY: version-patch version-minor version-major version-set version-sync version-check
@@ -84,7 +84,8 @@ help: ## Show available targets
 	@echo "  fmt             Format code (cargo fmt)"
 	@echo "  lint            Run linting (cargo clippy + goneat lint)"
 	@echo "  precommit       Pre-commit checks (fast: fmt, clippy)"
-	@echo "  prepush         Pre-push checks (thorough: fmt, clippy, test, deny, version-check)"
+	@echo "  prepush         Pre-push checks (including current CI stable Clippy)"
+	@echo "  ci-clippy       Update stable Rust and run the CI Clippy command"
 	@echo "  msrv            Verify build+test on MSRV toolchain (core crates)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
@@ -457,7 +458,11 @@ dogfood-cli: ## Run end-to-end CLI dogfooding matrix
 precommit: fmt-check lint ## Run pre-commit checks (fast)
 	@echo "[ok] Pre-commit checks passed"
 
-prepush: check version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
+ci-clippy: ## Match the floating stable Rust toolchain used by CI
+	rustup update stable --no-self-update
+	RUSTFLAGS="-Dwarnings" cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
+
+prepush: check ci-clippy version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
 
 npm-publish-prereqs-check: ## Validate TypeScript npm trusted-publishing workflow prerequisites
