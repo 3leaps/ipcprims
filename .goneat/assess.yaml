@@ -1,28 +1,11 @@
 # goneat assess configuration for ipcprims
 # Rust project with FFI bindings
 #
-# NOTE: goneat v0.3.x does not have native Rust support.
-# Rust checks (cargo fmt, clippy, deny) are handled via Makefile.
-# This config handles ancillary files (YAML, shell, GitHub Actions).
-#
-# When goneat v0.4.1 adds Rust toolchain support, this can be extended.
+# goneat v0.6.0 runs baseline Rust lint, but does not parse a rust: block here
+# or configure target, features, all-targets, deny-warnings, or toolchain.
+# Makefile's direct Cargo Clippy calls fill that gap until configurable Rust
+# lint support is available upstream. This config handles ancillary files.
 version: 1
-# Rust toolchain checks - FUTURE (goneat v0.4.1+)
-# rust:
-#   fmt:
-#     enabled: true
-#     fix: true
-#   clippy:
-#     enabled: true
-#     deny_warnings: true
-#   deny:
-#     enabled: true
-#     checks: [licenses, advisories, bans, sources]
-#   paths:
-#     - "crates/**/*.rs"
-#     - "ffi/**/*.rs"
-#   ignore:
-#     - "**/target/**"
 lint:
   # YAML linting (CI workflows, configs)
   yamllint:

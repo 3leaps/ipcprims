@@ -11,7 +11,7 @@
 .PHONY: all help bootstrap bootstrap-force tools check test fmt fmt-check lint build clean version install dogfood-cli
 .PHONY: doctor-env
 .PHONY: check-windows check-windows-msvc check-windows-gnu check-windows-arm64-msvc
-.PHONY: check-unix-clippy
+.PHONY: clippy-targets check-unix-clippy
 .PHONY: ffi-header build-ffi go-bindings-sync go-build go-test ts-build ts-test
 .PHONY: precommit prepush ci-clippy check-targets npm-publish-prereqs-check deny audit
 .PHONY: msrv
@@ -45,11 +45,6 @@ GO_OS := $(shell go env GOOS)
 GO_ARCH := $(shell go env GOARCH)
 GO_PLATFORM := $(GO_OS)-$(GO_ARCH)
 
-PREPUSH_EXTRA :=
-ifeq ($(OS),Windows_NT)
-PREPUSH_EXTRA := check-unix-clippy
-endif
-
 # -----------------------------------------------------------------------------
 # Default and Help
 # -----------------------------------------------------------------------------
@@ -82,16 +77,17 @@ help: ## Show available targets
 	@echo "  ci              Run exactly what CI runs (fmt, clippy, test, deny, version-check)"
 	@echo "  test            Run test suite"
 	@echo "  fmt             Format code (cargo fmt)"
-	@echo "  lint            Run linting (cargo clippy + goneat lint)"
+	@echo "  lint            Run baseline lint through goneat"
 	@echo "  precommit       Pre-commit checks (fast: fmt, clippy)"
 	@echo "  prepush         Pre-push checks (including current CI stable Clippy)"
 	@echo "  ci-clippy       Update stable Rust and run the CI Clippy command"
 	@echo "  check-targets   Check async Rust peer code for Linux x64/arm64 and Windows x64"
+	@echo "  clippy-targets  Lint non-host Linux x64/arm64 and Windows x64 targets"
 	@echo "  msrv            Verify build+test on MSRV toolchain (core crates)"
 	@echo "  deny            Run cargo-deny license and advisory checks"
 	@echo "  audit           Run cargo-audit security scan"
 	@echo "  check-windows   Run Windows target cargo checks (no link)"
-	@echo "  check-unix-clippy  Lint Unix cfg paths via Linux target"
+	@echo "  check-unix-clippy  Alias for clippy-targets"
 	@echo ""
 	@echo "Release:"
 	@echo "  release-preflight  Verify all pre-tag requirements (REQUIRED before tagging)"
@@ -287,14 +283,13 @@ fmt-check: ## Check formatting without modifying
 	fi
 	@echo "[ok] Formatting check passed"
 
-lint: ## Run linting (cargo clippy + goneat lint)
-	@echo "Linting Rust..."
-	$(CARGO) clippy --workspace --all-targets --all-features -- -D warnings
+lint: ## Run baseline lint through goneat
 	@if command -v goneat >/dev/null 2>&1; then \
-		echo "Linting YAML, shell, workflows..."; \
+		echo "Linting Rust, YAML, shell, workflows..."; \
 		goneat assess --categories lint --fail-on medium --ci-summary --log-level warn; \
 	else \
-		echo "[!!] goneat not found — skipping non-Rust linting (run 'make bootstrap')"; \
+		echo "[!!] goneat not found — baseline lint requires goneat (run 'make bootstrap')"; \
+		exit 1; \
 	fi
 	@echo "[ok] Linting passed"
 
@@ -319,12 +314,7 @@ check-windows-arm64-msvc: ## Windows target check: aarch64-pc-windows-msvc (foun
 	RUSTFLAGS="-Dwarnings" $(CARGO) check -p ipcprims-transport -p ipcprims-frame --all-targets --target aarch64-pc-windows-msvc
 	@echo "[ok] aarch64-pc-windows-msvc check passed"
 
-check-unix-clippy: ## Lint Unix cfg paths via x86_64-unknown-linux-gnu target
-	@echo "Linting Unix cfg paths (x86_64-unknown-linux-gnu)..."
-	rustup target add x86_64-unknown-linux-gnu
-	$(CARGO) clippy -p ipcprims-transport -p ipcprims-frame --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings
-	$(CARGO) clippy -p ipcprims-peer --tests --features async --target x86_64-unknown-linux-gnu -- -D warnings
-	@echo "[ok] Unix cfg clippy check passed"
+check-unix-clippy: clippy-targets ## Compatibility alias for non-host target Clippy
 
 msrv: ## Verify build with Minimum Supported Rust Version (1.88, core crates)
 	@echo "Checking MSRV (core crates at 1.88)..."
@@ -459,6 +449,8 @@ dogfood-cli: ## Run end-to-end CLI dogfooding matrix
 precommit: fmt-check lint ## Run pre-commit checks (fast)
 	@echo "[ok] Pre-commit checks passed"
 
+# Direct Cargo Clippy is a goneat v0.6.0 configuration gap: upstream needs
+# target, features, all-targets, deny-warnings, and toolchain selection in Rust lint config.
 ci-clippy: ## Match the floating stable Rust toolchain used by CI
 	rustup update stable --no-self-update
 	RUSTFLAGS="-Dwarnings" cargo +stable clippy --workspace --all-targets --all-features -- -D warnings
@@ -469,7 +461,21 @@ check-targets: ## Check async peer transport on cross-platform CI targets
 		cargo check --locked -p ipcprims-peer --features async --target "$$target" || exit $$?; \
 	done
 
-prepush: check ci-clippy check-targets version-check npm-publish-prereqs-check $(PREPUSH_EXTRA) ## Run pre-push checks (thorough)
+# Same goneat gap as ci-clippy; lint each non-host triple covered by check-targets.
+clippy-targets: ## Lint async foundation crates on non-host CI targets
+	rustup update stable --no-self-update
+	@set -eu; \
+	host=$$(rustc +stable -vV | sed -n 's/^host: //p'); \
+	test -n "$$host"; \
+	for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc; do \
+		if [ "$$target" = "$$host" ]; then continue; fi; \
+		rustup target add --toolchain stable "$$target"; \
+		RUSTFLAGS="-Dwarnings" cargo +stable clippy --locked \
+			-p ipcprims-transport -p ipcprims-frame -p ipcprims-peer \
+			--all-targets --features async --target "$$target" -- -D warnings; \
+	done
+
+prepush: check ci-clippy check-targets clippy-targets version-check npm-publish-prereqs-check ## Run pre-push checks (thorough)
 	@echo "[ok] Pre-push checks passed"
 
 npm-publish-prereqs-check: ## Validate TypeScript npm trusted-publishing workflow prerequisites
