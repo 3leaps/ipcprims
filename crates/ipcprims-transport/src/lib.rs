@@ -8,6 +8,7 @@
 //! the [`IpcStream`] type provided here.
 
 pub mod error;
+pub mod peer_evidence;
 pub mod traits;
 
 #[cfg(windows)]
@@ -16,6 +17,9 @@ pub mod npipes;
 pub mod uds;
 
 pub use error::{Result, TransportError};
+pub use peer_evidence::{
+    PeerEvidence, PeerEvidenceSource, PeerEvidenceUnavailableReason, UnixPeerEvidence,
+};
 pub use traits::IpcStream;
 
 #[cfg(windows)]

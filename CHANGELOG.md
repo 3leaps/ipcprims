@@ -13,6 +13,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- macOS sync and async Unix streams now return peer uid/gid/pid from `getpeereid` and `LOCAL_PEERPID` when all three are available. Previously `peer_credentials()` returned `None` on macOS; it still returns `None` if the pid cannot be observed. Linux tuple behavior is unchanged.
+- Added typed `peer_evidence()` to Rust streams and peers with source, optional pid, and explicit unavailable reason. Peer evidence is not authentication. Windows remains unavailable.
+
 ## [0.2.5] — 2026-08-25
 
 Patch release for TypeScript package interoperability and SchemaRegistry guidance.

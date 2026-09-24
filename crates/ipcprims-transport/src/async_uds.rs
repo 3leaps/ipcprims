@@ -12,6 +12,9 @@ use tokio::net::UnixListener;
 use tracing::{debug, info};
 
 use crate::error::{Result, TransportError};
+use crate::peer_evidence::PeerEvidence;
+#[cfg(not(target_os = "macos"))]
+use crate::peer_evidence::PeerEvidenceUnavailableReason;
 
 /// An async IPC stream (Tokio).
 ///
@@ -51,9 +54,11 @@ impl AsyncIpcStream {
         self.inner
     }
 
-    /// Get the credentials of the connected peer (Linux only).
+    /// Get the credentials of the connected peer (Linux or macOS).
     ///
     /// Returns `(uid, gid, pid)` via `SO_PEERCRED`, or `None` if unavailable.
+    /// Linux's historical tuple retains pid 0 across pid namespaces; use
+    /// [`Self::peer_evidence`] for an optional pid.
     #[cfg(target_os = "linux")]
     pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
         use std::os::fd::AsRawFd;
@@ -85,12 +90,45 @@ impl AsyncIpcStream {
         }
     }
 
+    /// Get the credentials of the connected peer (macOS).
+    ///
+    /// Returns `None` unless `getpeereid` and `LOCAL_PEERPID` both succeed
+    /// and report a usable pid. Peer credentials are not authentication.
+    #[cfg(target_os = "macos")]
+    pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
+        crate::peer_evidence::legacy_macos_credentials(self.peer_evidence())
+    }
+
     /// Get the credentials of the connected peer.
     ///
     /// Returns `None` on platforms that do not expose peer credentials.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub fn peer_credentials(&self) -> Option<(u32, u32, u32)> {
         None
+    }
+
+    /// Observe platform peer evidence without treating it as authentication.
+    pub fn peer_evidence(&self) -> PeerEvidence {
+        #[cfg(target_os = "linux")]
+        {
+            match self.peer_credentials() {
+                Some(credentials) => crate::peer_evidence::linux_peer_evidence(credentials),
+                None => PeerEvidence::Unavailable {
+                    reason: PeerEvidenceUnavailableReason::QueryFailed,
+                },
+            }
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::fd::AsRawFd;
+            crate::peer_evidence::macos_peer_evidence(self.inner.as_raw_fd())
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            PeerEvidence::Unavailable {
+                reason: PeerEvidenceUnavailableReason::UnsupportedPlatform,
+            }
+        }
     }
 }
 
@@ -291,6 +329,71 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn peer_credentials_linux_match_typed_evidence() {
+        let (client, server) = tokio::net::UnixStream::pair().unwrap();
+        let server = AsyncIpcStream::new(server);
+        let (uid, gid, pid) = server.peer_credentials().expect("Linux SO_PEERCRED");
+        let PeerEvidence::Unix(evidence) = server.peer_evidence() else {
+            panic!("expected Unix evidence");
+        };
+        assert_eq!(
+            (evidence.uid, evidence.gid, evidence.pid),
+            (uid, gid, (pid != 0).then_some(pid))
+        );
+        assert_eq!(
+            evidence.uid_gid_source,
+            crate::PeerEvidenceSource::SoPeercred
+        );
+        assert_eq!(
+            evidence.pid_source,
+            (pid != 0).then_some(crate::PeerEvidenceSource::SoPeercred)
+        );
+        drop(client);
+    }
+    #[cfg(target_os = "macos")]
+    use crate::peer_evidence::PeerEvidenceSource;
+
+    #[tokio::test]
+    #[cfg(target_os = "macos")]
+    async fn peer_credentials_macos() {
+        use tokio::io::AsyncWriteExt;
+        let dir = std::env::temp_dir().join(format!("ip-a-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("peer.sock");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        let child = crate::peer_evidence::tests::spawn_client(&path);
+        let (stream, _) = listener.accept().await.unwrap();
+        let pid = child.id();
+        let server = AsyncIpcStream::new(stream);
+        let credentials = server.peer_credentials();
+        let evidence = server.peer_evidence();
+        let mut stream = server.into_inner();
+        stream.write_all(&[1]).await.unwrap();
+        let (uid, gid) =
+            tokio::task::spawn_blocking(move || crate::peer_evidence::tests::client_ids(child))
+                .await
+                .unwrap();
+        let expected = (uid, gid, pid);
+
+        assert_eq!(credentials, Some(expected));
+        assert_eq!(
+            evidence,
+            PeerEvidence::Unix(crate::UnixPeerEvidence {
+                uid: expected.0,
+                gid: expected.1,
+                pid: Some(expected.2),
+                uid_gid_source: PeerEvidenceSource::Getpeereid,
+                pid_source: Some(PeerEvidenceSource::LocalPeerpid),
+                pid_unavailable_reason: None,
+            })
+        );
+        drop(listener);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
 
     #[tokio::test]
     async fn bind_accept_connect() {
